@@ -6,6 +6,9 @@
 //! ownership and 0644/0755 modes, unless an entry for them is added to the JSON.
 
 mod extract;
+mod rebuild;
+
+pub use rebuild::tree_digest;
 
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
@@ -110,4 +113,9 @@ pub fn unpack(bytes: &[u8], root: &Path) -> Result<Metadata> {
         compression,
         entries: extract::extract(entries, root)?,
     })
+}
+
+pub fn pack(root: &Path, metadata: &Metadata) -> Result<Vec<u8>> {
+    let archive = cpio::write(&rebuild::rebuild(root, metadata)?);
+    metadata.compression.compress(&archive)
 }
