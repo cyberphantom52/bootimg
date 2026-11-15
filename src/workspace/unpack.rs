@@ -45,6 +45,7 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
                 let bytes = &payload[offset as usize..(offset + size) as usize];
                 contents.push(match name.as_str() {
                     "ramdisk" => ws.unpack_ramdisk(&name, bytes)?,
+                    "dtb" => ws.unpack_dtb(&name, bytes)?,
                     _ => {
                         ws.write(&name, bytes)?;
                         name
@@ -59,7 +60,8 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
             for (name, offset, size) in layout {
                 let bytes = &payload[offset as usize..(offset + size) as usize];
                 contents.push(match name.as_str() {
-                    "dtb" | "bootconfig" => {
+                    "dtb" => ws.unpack_dtb(&name, bytes)?,
+                    "bootconfig" => {
                         ws.write(&name, bytes)?;
                         name
                     }

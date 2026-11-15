@@ -1,12 +1,13 @@
 //! Unpacking images into editable workspaces and packing them back.
 //!
 //! A workspace holds `image.json` (editable header fields), `avb.json` (AVB
-//! metadata, when present), one file per image component and expanded
-//! ramdisks. Unpack records a
+//! metadata, when present), one file per image component, expanded ramdisks
+//! and decompiled device trees. Unpack records a
 //! hash of everything it writes; pack rebuilds only what changed and otherwise
 //! reuses the original bytes, so an untouched workspace repacks to an identical
 //! image.
 
+mod device_trees;
 mod pack;
 mod ramdisks;
 mod unpack;

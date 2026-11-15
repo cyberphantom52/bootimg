@@ -84,10 +84,11 @@ fn build_payload(ws: &Workspace, info: &ImageInfo) -> Result<Vec<u8>> {
     };
     Ok(match info {
         ImageInfo::Boot { header } => {
-            for name in ["kernel", "second", "recovery_dtbo", "dtb", "boot_signature"] {
+            for name in ["kernel", "second", "recovery_dtbo", "boot_signature"] {
                 add(name, ws.read_optional(name)?);
             }
             add("ramdisk", ws.pack_ramdisk("ramdisk")?);
+            add("dtb", ws.pack_dtb("dtb")?);
             bootimg::build_boot(header, &components)?
         }
         ImageInfo::VendorBoot { header } => {
@@ -104,9 +105,8 @@ fn build_payload(ws: &Workspace, info: &ImageInfo) -> Result<Vec<u8>> {
                 );
                 add(&entry.file, data);
             }
-            for name in ["dtb", "bootconfig"] {
-                add(name, ws.read_optional(name)?);
-            }
+            add("dtb", ws.pack_dtb("dtb")?);
+            add("bootconfig", ws.read_optional("bootconfig")?);
             bootimg::build_vendor_boot(header, &components)?
         }
     })
