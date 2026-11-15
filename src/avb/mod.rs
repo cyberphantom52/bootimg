@@ -5,9 +5,11 @@
 
 mod descriptor;
 mod key;
+mod vbmeta;
 
 pub use descriptor::{Descriptor, hash, update_hash};
 pub use key::{known_key, signing_key};
+pub use vbmeta::{Signature, VbMeta};
 
 use anyhow::{Context, Result, bail};
 use rsa::Pkcs1v15Sign;
