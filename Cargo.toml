@@ -1,0 +1,19 @@
+[package]
+name = "bootimgctl"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Unpack, edit and repack Android boot, vendor_boot, vbmeta and dtbo images"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
