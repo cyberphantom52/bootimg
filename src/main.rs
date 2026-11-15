@@ -4,6 +4,7 @@ mod compress;
 mod cpio;
 mod dtb;
 mod dtbo;
+mod dtc;
 mod ramdisk;
 mod util;
 
