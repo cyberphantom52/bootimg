@@ -3,8 +3,10 @@
 //! Encoding follows avbtool so that re-signed images are byte-identical to what
 //! `avbtool add_hash_footer` / `make_vbmeta_image` produce for the same inputs.
 
+mod descriptor;
 mod key;
 
+pub use descriptor::{Descriptor, hash, update_hash};
 pub use key::{known_key, signing_key};
 
 use anyhow::{Context, Result, bail};

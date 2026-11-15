@@ -52,3 +52,34 @@ pub fn put_cstr(out: &mut [u8], text: &str, what: &str) -> Result<()> {
     out[..text.len()].copy_from_slice(text.as_bytes());
     Ok(())
 }
+
+pub mod hex {
+    use anyhow::{Result, bail};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn encode(bytes: impl AsRef<[u8]>) -> String {
+        bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    pub fn decode(text: &str) -> Result<Vec<u8>> {
+        if !text.len().is_multiple_of(2) {
+            bail!("hex string has an odd number of digits");
+        }
+        (0..text.len())
+            .step_by(2)
+            .map(|i| {
+                u8::from_str_radix(&text[i..i + 2], 16)
+                    .map_err(|_| anyhow::anyhow!("invalid hex string {text:?}"))
+            })
+            .collect()
+    }
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        decode(&text).map_err(serde::de::Error::custom)
+    }
+}
