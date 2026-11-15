@@ -4,10 +4,12 @@
 //! `avbtool add_hash_footer` / `make_vbmeta_image` produce for the same inputs.
 
 mod descriptor;
+mod footer;
 mod key;
 mod vbmeta;
 
 pub use descriptor::{Descriptor, hash, update_hash};
+pub use footer::{Footer, append_footer};
 pub use key::{known_key, signing_key};
 pub use vbmeta::{Signature, VbMeta};
 
