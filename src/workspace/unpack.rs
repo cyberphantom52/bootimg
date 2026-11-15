@@ -44,10 +44,7 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
             for (name, offset, size) in layout {
                 let bytes = &payload[offset as usize..(offset + size) as usize];
                 contents.push(match name.as_str() {
-                    "ramdisk" => {
-                        ws.write("ramdisk.img", bytes)?;
-                        "ramdisk.img".into()
-                    }
+                    "ramdisk" => ws.unpack_ramdisk(&name, bytes)?,
                     _ => {
                         ws.write(&name, bytes)?;
                         name
@@ -66,11 +63,7 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
                         ws.write(&name, bytes)?;
                         name
                     }
-                    _ => {
-                        let file = format!("{name}.img");
-                        ws.write(&file, bytes)?;
-                        file
-                    }
+                    _ => ws.unpack_ramdisk(&name, bytes)?,
                 });
             }
             ImageInfo::VendorBoot { header }

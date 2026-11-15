@@ -87,15 +87,15 @@ fn build_payload(ws: &Workspace, info: &ImageInfo) -> Result<Vec<u8>> {
             for name in ["kernel", "second", "recovery_dtbo", "dtb", "boot_signature"] {
                 add(name, ws.read_optional(name)?);
             }
-            add("ramdisk", ws.read_optional("ramdisk.img")?);
+            add("ramdisk", ws.pack_ramdisk("ramdisk")?);
             bootimg::build_boot(header, &components)?
         }
         ImageInfo::VendorBoot { header } => {
             if header.ramdisks.is_empty() {
-                add("vendor_ramdisk", ws.read_optional("vendor_ramdisk.img")?);
+                add("vendor_ramdisk", ws.pack_ramdisk("vendor_ramdisk")?);
             }
             for entry in &header.ramdisks {
-                let data = ws.read_optional(&format!("{}.img", entry.file))?;
+                let data = ws.pack_ramdisk(&entry.file)?;
                 ensure!(
                     data.is_some(),
                     "{}.img for the ramdisk table row {:?} is missing",

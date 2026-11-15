@@ -1,12 +1,14 @@
 //! Unpacking images into editable workspaces and packing them back.
 //!
 //! A workspace holds `image.json` (editable header fields), `avb.json` (AVB
-//! metadata, when present) and one file per image component. Unpack records a
+//! metadata, when present), one file per image component and expanded
+//! ramdisks. Unpack records a
 //! hash of everything it writes; pack rebuilds only what changed and otherwise
 //! reuses the original bytes, so an untouched workspace repacks to an identical
 //! image.
 
 mod pack;
+mod ramdisks;
 mod unpack;
 
 pub use pack::{PackOptions, pack};
@@ -23,6 +25,7 @@ use std::{
 use crate::{
     avb::{self, Footer, VbMeta},
     bootimg::{BootHeader, VendorBootHeader},
+    ramdisk,
     util::{sha256_hex, slice},
 };
 
@@ -98,11 +101,19 @@ impl Workspace {
         self.path(name).symlink_metadata().is_ok()
     }
 
+    fn recorded(&self, name: &str) -> bool {
+        self.state.hashes.contains_key(name)
+    }
+
+    /// The hash of a file, or of a ramdisk tree for names ending in `/`.
     fn current_hash(&self, name: &str) -> Result<Option<String>> {
         if !self.exists(name) {
             return Ok(None);
         }
-        Ok(Some(sha256_hex(&self.read(name)?)))
+        Ok(Some(match name.strip_suffix('/') {
+            Some(tree) => ramdisk::tree_digest(&self.path(tree))?,
+            None => sha256_hex(&self.read(name)?),
+        }))
     }
 
     /// Whether a recorded file was edited, replaced or deleted.
