@@ -2,7 +2,6 @@
 name = "bootimgctl"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.99"
 description = "Unpack, edit and repack Android boot, vendor_boot, vbmeta and dtbo images"
 license = "GPL-3.0-or-later"
 publish = false

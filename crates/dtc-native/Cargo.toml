@@ -2,7 +2,6 @@
 name = "bootimgctl-dtc-native"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.99"
 publish = false
 license = "GPL-2.0-or-later"
 description = "Upstream dtc compiled into a library, callable as a process entry point"
