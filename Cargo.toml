@@ -14,6 +14,9 @@ members = ["crates/dtc-native"]
 dtc_native = { package = "bootimgctl-dtc-native", path = "crates/dtc-native" }
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive"] }
+rsa = { version = "0.9", features = ["sha2"] }
+serde = { version = "1.0", features = ["derive"] }
+sha2 = { version = "0.10", features = ["oid"] }
 
 [lints.rust]
 unsafe_code = "forbid"
