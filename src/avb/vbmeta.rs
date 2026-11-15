@@ -1,10 +1,13 @@
 //! The vbmeta struct: header, authentication block and auxiliary block.
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
-use super::{Algorithm, Descriptor, key::decode_public_key};
-use crate::util::{be32, be64, cstr, hex, slice};
+use super::{
+    Algorithm, Descriptor,
+    key::{Key, decode_public_key},
+};
+use crate::util::{align, be32, be64, cstr, hex, put_cstr, slice};
 
 const HEADER_SIZE: usize = 256;
 
@@ -118,6 +121,79 @@ impl VbMeta {
         Ok((vbmeta, signature))
     }
 
+    /// Encodes the vbmeta blob. A key is required unless the algorithm is NONE;
+    /// the algorithm's key size is adjusted to match the key.
+    pub fn encode(&mut self, key: Option<&Key>) -> Result<Vec<u8>> {
+        if self.algorithm != Algorithm::NONE {
+            let key = key.context("signing key required")?;
+            self.algorithm = self.algorithm.with_key_bits(key.bits())?;
+            self.public_key = key.avb_public_key();
+        }
+        let algorithm = self.algorithm;
+
+        let mut descriptors = Vec::new();
+        for descriptor in &self.descriptors {
+            descriptors.extend(descriptor.encode()?);
+        }
+        let mut aux = [
+            &descriptors[..],
+            &self.public_key,
+            &self.public_key_metadata,
+        ]
+        .concat();
+        aux.resize(align(aux.len() as u64, 64) as usize, 0);
+
+        let hash_size = algorithm.hash_size();
+        let signature_size = algorithm.key_bits() / 8;
+        let auth_size = align((hash_size + signature_size) as u64, 64);
+
+        // Offsets in the auxiliary block are laid out as avbtool does, including
+        // the public key metadata offset when there is no metadata.
+        let mut header = vec![0u8; HEADER_SIZE];
+        let put32 =
+            |h: &mut Vec<u8>, at: usize, v: u32| h[at..at + 4].copy_from_slice(&v.to_be_bytes());
+        let put64 =
+            |h: &mut Vec<u8>, at: usize, v: u64| h[at..at + 8].copy_from_slice(&v.to_be_bytes());
+        header[..4].copy_from_slice(b"AVB0");
+        put32(&mut header, 4, self.required_libavb_version_major);
+        put32(&mut header, 8, self.required_libavb_version_minor);
+        put64(&mut header, 12, auth_size);
+        put64(&mut header, 20, aux.len() as u64);
+        put32(&mut header, 28, algorithm.id());
+        put64(&mut header, 32, 0);
+        put64(&mut header, 40, hash_size as u64);
+        put64(&mut header, 48, hash_size as u64);
+        put64(&mut header, 56, signature_size as u64);
+        put64(&mut header, 64, descriptors.len() as u64);
+        put64(&mut header, 72, self.public_key.len() as u64);
+        put64(
+            &mut header,
+            80,
+            (descriptors.len() + self.public_key.len()) as u64,
+        );
+        put64(&mut header, 88, self.public_key_metadata.len() as u64);
+        put64(&mut header, 96, 0);
+        put64(&mut header, 104, descriptors.len() as u64);
+        put64(&mut header, 112, self.rollback_index);
+        put32(&mut header, 120, self.flags);
+        put32(&mut header, 124, self.rollback_index_location);
+        put_cstr(
+            &mut header[128..175],
+            &self.release_string,
+            "release string",
+        )?;
+
+        let mut auth = Vec::with_capacity(auth_size as usize);
+        if let (Some(key), true) = (key, algorithm != Algorithm::NONE) {
+            let message = [&header[..], &aux].concat();
+            let hash = algorithm.digest(&message);
+            auth.extend_from_slice(&hash);
+            auth.extend_from_slice(&key.sign(algorithm, &hash)?);
+        }
+        auth.resize(auth_size as usize, 0);
+        Ok([header, auth, aux].concat())
+    }
+
     pub fn hash_descriptor_mut(&mut self, partition: &str) -> Option<&mut Descriptor> {
         self.descriptors.iter_mut().find(|d| {
             matches!(d, Descriptor::Hash { partition_name, .. } | Descriptor::Hashtree { partition_name, .. }
@@ -131,5 +207,53 @@ impl VbMeta {
             Descriptor::Hash { partition_name, .. } => Some(partition_name.as_str()),
             _ => None,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vbmeta(algorithm: Algorithm) -> VbMeta {
+        VbMeta {
+            required_libavb_version_major: 1,
+            required_libavb_version_minor: 0,
+            algorithm,
+            rollback_index: 3,
+            flags: 0,
+            rollback_index_location: 1,
+            release_string: "avbtool 1.2.0".into(),
+            descriptors: vec![Descriptor::Property {
+                key: "a".into(),
+                value: "b".into(),
+            }],
+            public_key: Vec::new(),
+            public_key_metadata: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn signed_metadata_round_trips_and_detects_tampering() {
+        let key = Key::test_key(2048).unwrap();
+        let mut original = vbmeta(Algorithm::SHA512_RSA4096);
+        let mut blob = original.encode(Some(&key)).unwrap();
+        // The algorithm follows the key size and keeps its digest.
+        assert_eq!(original.algorithm, Algorithm::SHA512_RSA2048);
+        let (parsed, signature) = VbMeta::parse(&blob).unwrap();
+        assert_eq!((parsed, signature), (original, Signature::Valid));
+
+        let last = blob.len() - 1;
+        blob[last] ^= 1;
+        assert_eq!(VbMeta::parse(&blob).unwrap().1, Signature::Invalid);
+    }
+
+    #[test]
+    fn unsigned_metadata_needs_no_key() {
+        let mut original = vbmeta(Algorithm::NONE);
+        let blob = original.encode(None).unwrap();
+        assert_eq!(
+            VbMeta::parse(&blob).unwrap(),
+            (original, Signature::Unsigned)
+        );
     }
 }
