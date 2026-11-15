@@ -1,10 +1,10 @@
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, fs, path::Path};
 
-use super::{ImageInfo, STATE_DIR, State, Workspace, detect, split_footer};
+use super::{AvbInfo, ImageInfo, STATE_DIR, State, Workspace, detect, split_footer};
 use crate::{
     avb::{self, VbMeta},
-    bootimg,
+    bootimg, dtbo,
 };
 
 pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
@@ -70,7 +70,33 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
             }
             ImageInfo::VendorBoot { header }
         }
-        _ => unreachable!(),
+        "vbmeta" => {
+            ensure!(footer.is_none(), "vbmeta image with an AVB footer");
+            let (vbmeta, signature) = VbMeta::parse(payload)?;
+            if signature == avb::Signature::Invalid {
+                eprintln!("warning: the vbmeta signature does not verify");
+            }
+            ws.write_json(
+                "avb.json",
+                &AvbInfo {
+                    partition_size: data.len() as u64,
+                    vbmeta,
+                },
+            )?;
+            contents.push("avb.json".into());
+            ImageInfo::Vbmeta
+        }
+        "dtbo" => {
+            let (table, trees) = dtbo::parse_dtbo(payload)?;
+            for (entry, tree) in table.entries.iter().zip(&trees) {
+                contents.push(ws.unpack_dtb(&entry.file, tree)?);
+            }
+            ImageInfo::Dtbo { table }
+        }
+        _ => {
+            contents.push(ws.unpack_dtb("dtb", payload)?);
+            ImageInfo::Dtb
+        }
     };
     if let Some(footer) = &footer {
         ws.write_json("avb.json", footer)?;

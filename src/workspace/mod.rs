@@ -26,6 +26,7 @@ use std::{
 use crate::{
     avb::{self, Footer, VbMeta},
     bootimg::{BootHeader, VendorBootHeader},
+    dtbo::Dtbo,
     ramdisk,
     util::{sha256_hex, slice},
 };
@@ -37,6 +38,9 @@ const STATE_DIR: &str = ".bootimgctl";
 pub enum ImageInfo {
     Boot { header: BootHeader },
     VendorBoot { header: VendorBootHeader },
+    Vbmeta,
+    Dtbo { table: Dtbo },
+    Dtb,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -150,7 +154,10 @@ fn detect(payload: &[u8]) -> Result<&'static str> {
     Ok(match payload {
         [b'A', b'N', b'D', b'R', b'O', b'I', b'D', b'!', ..] => "boot",
         [b'V', b'N', b'D', b'R', b'B', b'O', b'O', b'T', ..] => "vendor_boot",
-        _ => bail!("not a boot or vendor_boot image"),
+        [b'A', b'V', b'B', b'0', ..] => "vbmeta",
+        [0xd7, 0xb7, 0xab, 0x1e, ..] => "dtbo",
+        [0xd0, 0x0d, 0xfe, 0xed, ..] => "dtb",
+        _ => bail!("not a boot, vendor_boot, vbmeta, dtbo or dtb image"),
     })
 }
 

@@ -8,6 +8,7 @@ use super::{AvbInfo, ImageInfo, Workspace, split_footer};
 use crate::{
     avb,
     bootimg::{self, Components},
+    dtbo,
 };
 
 pub struct PackOptions<'a> {
@@ -42,9 +43,12 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
         say!("Changed: {}", changed.join(", "));
     }
 
-    // Only AVB metadata edits keep the original payload.
+    // Only AVB metadata edits keep the original payload; a vbmeta image is
+    // nothing but its metadata.
     let payload_changed = changed.iter().any(|name| name != "avb.json");
-    let mut image = if payload_changed {
+    let mut image = if matches!(info, ImageInfo::Vbmeta) {
+        Vec::new()
+    } else if payload_changed {
         build_payload(&ws, &info)?
     } else {
         original_payload.to_vec()
@@ -56,14 +60,21 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
     }) = avb_info
     {
         let key = avb::signing_key(vbmeta.algorithm, options.key)?;
-        let partition = vbmeta
-            .first_hash_partition()
-            .context("the AVB footer has no hash descriptor")?
-            .to_string();
-        let descriptor = vbmeta.hash_descriptor_mut(&partition).unwrap();
-        avb::update_hash(descriptor, &image)?;
-        let blob = vbmeta.encode(key.as_ref())?;
-        avb::append_footer(&mut image, &blob, partition_size)?;
+        if matches!(info, ImageInfo::Vbmeta) {
+            image = vbmeta.encode(key.as_ref())?;
+            if (image.len() as u64) < partition_size {
+                image.resize(partition_size as usize, 0);
+            }
+        } else {
+            let partition = vbmeta
+                .first_hash_partition()
+                .context("the AVB footer has no hash descriptor")?
+                .to_string();
+            let descriptor = vbmeta.hash_descriptor_mut(&partition).unwrap();
+            avb::update_hash(descriptor, &image)?;
+            let blob = vbmeta.encode(key.as_ref())?;
+            avb::append_footer(&mut image, &blob, partition_size)?;
+        }
         match &key {
             Some(key) => say!("Signed {:?} with {}", vbmeta.algorithm, key.description),
             None => say!("AVB metadata updated (algorithm NONE, unsigned)"),
@@ -109,5 +120,17 @@ fn build_payload(ws: &Workspace, info: &ImageInfo) -> Result<Vec<u8>> {
             add("bootconfig", ws.read_optional("bootconfig")?);
             bootimg::build_vendor_boot(header, &components)?
         }
+        ImageInfo::Dtbo { table } => {
+            let mut trees = Vec::new();
+            for entry in &table.entries {
+                trees.push(
+                    ws.pack_dtb(&entry.file)?
+                        .with_context(|| format!("{} is missing", entry.file))?,
+                );
+            }
+            dtbo::build_dtbo(table, &trees)?
+        }
+        ImageInfo::Dtb => ws.pack_dtb("dtb")?.context("dtb is missing")?,
+        ImageInfo::Vbmeta => unreachable!(),
     })
 }

@@ -9,7 +9,14 @@ use std::{
     process::Command,
 };
 
-const IMAGES: [&str; 3] = ["boot-v2.img", "boot-v4.img", "vendor_boot.img"];
+const IMAGES: [&str; 6] = [
+    "boot-v2.img",
+    "boot-v4.img",
+    "vendor_boot.img",
+    "vbmeta.img",
+    "dtbo.img",
+    "board.dtb",
+];
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -29,6 +36,18 @@ fn run(args: &[&Path]) -> String {
         "bootimgctl {args:?} failed:\n{text}"
     );
     text
+}
+
+fn fails(args: &[&Path]) -> String {
+    let output = Command::new(env!("CARGO_BIN_EXE_bootimgctl"))
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "bootimgctl {args:?} unexpectedly succeeded"
+    );
+    String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
 fn p(text: &str) -> &Path {
@@ -76,19 +95,40 @@ fn untouched_workspaces_repack_to_the_original_bytes() {
 }
 
 #[test]
-fn rebuilding_reproduces_the_reference_tools_output() {
+fn rebuilding_reproduces_mkbootimg_avbtool_and_mkdtboimg_output() {
     // Re-saving the metadata forces a full rebuild and re-sign from the
     // workspace; with the test keys the fixtures were made with, the result must
     // match the reference tools exactly.
     for name in IMAGES {
         let tmp = tempfile::tempdir().unwrap();
         let ws = unpack(tmp.path(), &fixture(name));
-        let metadata = "image.json";
+        let metadata = if name == "vbmeta.img" {
+            "avb.json"
+        } else {
+            "image.json"
+        };
         let mut text = fs::read_to_string(ws.join(metadata)).unwrap();
         text.push('\n');
         fs::write(ws.join(metadata), &text).unwrap();
         let output = tmp.path().join("out.img");
         assert!(pack(&ws, &output, &[]).contains(&format!("Changed: {metadata}")));
+        if name == "dtbo.img" {
+            // Deflate output differs between zlib implementations, so compare the
+            // table and trees rather than the compressed entry's bytes.
+            let check = tmp.path().join("check");
+            run(&[p("unpack"), &output, p("-o"), &check]);
+            assert_eq!(
+                json(&check.join("image.json")),
+                json(&ws.join("image.json"))
+            );
+            for file in ["dtbo.0.dtb", "dtbo.1.dtb", "dtbo.2.dtb"] {
+                assert_eq!(
+                    fs::read(check.join(file)).unwrap(),
+                    fs::read(ws.join(file)).unwrap()
+                );
+            }
+            continue;
+        }
         assert_eq!(
             fs::read(&output).unwrap(),
             fs::read(fixture(name)).unwrap(),
@@ -216,4 +256,43 @@ fn vendor_ramdisks_keep_their_compression_and_table_rows() {
     assert_eq!(rows[1]["name"], "dlkm");
     assert_eq!(rows[1]["ramdisk_type"], 3);
     assert_eq!(rows[1]["board_id"][0], 0x1234);
+}
+
+#[test]
+fn device_tree_sources_are_compiled_on_pack() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = unpack(tmp.path(), &fixture("dtbo.img"));
+    let dts = fs::read_to_string(ws.join("dtbo.0.dts")).unwrap();
+    assert!(dts.contains("overlay-property = \"enabled\""), "{dts}");
+    fs::write(
+        ws.join("dtbo.0.dts"),
+        dts.replace("\"enabled\"", "\"disabled\""),
+    )
+    .unwrap();
+    let output = tmp.path().join("dtbo.img");
+    assert!(pack(&ws, &output, &[]).contains("Compiling dtbo.0.dts"));
+
+    let check = tmp.path().join("check");
+    run(&[p("unpack"), &output, p("-o"), &check]);
+    assert!(
+        fs::read_to_string(check.join("dtbo.0.dts"))
+            .unwrap()
+            .contains("\"disabled\"")
+    );
+    assert!(
+        fs::read_to_string(check.join("dtbo.1.dts"))
+            .unwrap()
+            .contains("\"enabled\"")
+    );
+    let table = json(&check.join("image.json"));
+    assert_eq!(
+        table["table"]["entries"][2]["custom"][0], 1,
+        "zlib flag kept"
+    );
+
+    // Editing a source and the blob it came from is ambiguous.
+    fs::write(check.join("dtbo.2.dts"), "/dts-v1/; / { };").unwrap();
+    fs::write(check.join("dtbo.2.dtb"), b"replaced").unwrap();
+    let error = fails(&[p("pack"), &check, p("-o"), &tmp.path().join("x.img")]);
+    assert!(error.contains("keep only one of the edits"), "{error}");
 }
