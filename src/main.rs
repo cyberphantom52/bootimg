@@ -1,3 +1,5 @@
+mod util;
+
 use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
