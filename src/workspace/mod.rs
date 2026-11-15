@@ -2,15 +2,23 @@
 //!
 //! A workspace holds `image.json` (editable header fields), `avb.json` (AVB
 //! metadata, when present) and one file per image component. Unpack records a
-//! hash of everything it writes, so pack can tell what was edited.
+//! hash of everything it writes; pack rebuilds only what changed and otherwise
+//! reuses the original bytes, so an untouched workspace repacks to an identical
+//! image.
 
+mod pack;
 mod unpack;
 
+pub use pack::{PackOptions, pack};
 pub use unpack::unpack;
 
 use anyhow::{Context, Result, bail};
-use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::{
     avb::{self, Footer, VbMeta},
@@ -47,6 +55,15 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    fn open(dir: &Path) -> Result<Self> {
+        let state = fs::read(dir.join(STATE_DIR).join("state.json"))
+            .with_context(|| format!("{} is not a bootimgctl workspace", dir.display()))?;
+        Ok(Self {
+            dir: dir.to_path_buf(),
+            state: serde_json::from_slice(&state)?,
+        })
+    }
+
     fn path(&self, name: &str) -> PathBuf {
         self.dir.join(name)
     }
@@ -62,6 +79,49 @@ impl Workspace {
         let mut json = serde_json::to_string_pretty(value)?;
         json.push('\n');
         self.write(name, json.as_bytes())
+    }
+
+    fn read(&self, name: &str) -> Result<Vec<u8>> {
+        let path = self.path(name);
+        fs::read(&path).with_context(|| format!("reading {}", path.display()))
+    }
+
+    fn read_optional(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        self.exists(name).then(|| self.read(name)).transpose()
+    }
+
+    fn read_json<T: DeserializeOwned>(&self, name: &str) -> Result<T> {
+        serde_json::from_slice(&self.read(name)?).with_context(|| format!("parsing {name}"))
+    }
+
+    fn exists(&self, name: &str) -> bool {
+        self.path(name).symlink_metadata().is_ok()
+    }
+
+    fn current_hash(&self, name: &str) -> Result<Option<String>> {
+        if !self.exists(name) {
+            return Ok(None);
+        }
+        Ok(Some(sha256_hex(&self.read(name)?)))
+    }
+
+    /// Whether a recorded file was edited, replaced or deleted.
+    fn changed(&self, name: &str) -> Result<bool> {
+        Ok(self.current_hash(name)?.as_ref() != self.state.hashes.get(name))
+    }
+
+    fn changed_files(&self) -> Result<Vec<String>> {
+        let mut changed = Vec::new();
+        for name in self.state.hashes.keys() {
+            if self.changed(name)? {
+                changed.push(name.clone());
+            }
+        }
+        Ok(changed)
+    }
+
+    fn original(&self) -> Result<Vec<u8>> {
+        self.read(&format!("{STATE_DIR}/original.img"))
     }
 
     fn save_state(&self) -> Result<()> {

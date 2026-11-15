@@ -27,7 +27,10 @@ use std::{path::PathBuf, process::ExitCode};
 #[command(
     name = "bootimgctl",
     version,
-    about = "Unpack, edit and repack Android boot, vendor_boot, vbmeta, dtbo and dtb images"
+    about = "Unpack, edit and repack Android boot, vendor_boot, vbmeta, dtbo and dtb images",
+    after_help = "Typical use:\n  bootimgctl unpack boot.img\n  (edit files in boot/)\n  bootimgctl pack boot\n\n\
+        Edited images are re-signed with the original AVB parameters, using the AOSP test key \
+        of the original key size unless --key is given."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -45,6 +48,16 @@ enum Command {
         /// Replace an existing workspace
         #[arg(short, long)]
         force: bool,
+    },
+    /// Repack a workspace, rebuilding and re-signing what was edited
+    Pack {
+        workspace: PathBuf,
+        /// Output image (default: <original name>.signed in the current directory)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// RSA private key (PEM or DER) to sign with instead of the AOSP test key
+        #[arg(long)]
+        key: Option<PathBuf>,
     },
     /// Show an image's layout and verify its AVB metadata
     Info { image: PathBuf },
@@ -69,6 +82,17 @@ fn main() -> ExitCode {
             });
             workspace::unpack(&image, &output, force)
         }
+        Command::Pack {
+            workspace,
+            output,
+            key,
+        } => workspace::pack(
+            &workspace,
+            &workspace::PackOptions {
+                output: output.as_deref(),
+                key: key.as_deref(),
+            },
+        ),
         Command::Info { image } => info::show(&image),
         Command::Dtc { args } => return ExitCode::from(dtc_native::main(&args) as u8),
     };
