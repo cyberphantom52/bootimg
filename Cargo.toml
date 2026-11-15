@@ -7,6 +7,9 @@ description = "Unpack, edit and repack Android boot, vendor_boot, vbmeta and dtb
 license = "GPL-3.0-or-later"
 publish = false
 
+[workspace]
+members = ["crates/dtc-native"]
+
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
 
