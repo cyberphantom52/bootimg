@@ -1,4 +1,5 @@
 mod avb;
+mod compress;
 mod util;
 
 use clap::{Parser, Subcommand};
