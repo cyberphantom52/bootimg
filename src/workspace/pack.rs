@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{AvbInfo, ImageInfo, Workspace, split_footer};
+use super::{AvbInfo, ImageInfo, Workspace, gki, split_footer};
 use crate::{
     avb,
     bootimg::{self, Components},
@@ -49,7 +49,7 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
     let mut image = if matches!(info, ImageInfo::Vbmeta) {
         Vec::new()
     } else if payload_changed {
-        build_payload(&ws, &info)?
+        build_payload(&ws, &info, options.key)?
     } else {
         original_payload.to_vec()
     };
@@ -86,7 +86,7 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
     Ok(())
 }
 
-fn build_payload(ws: &Workspace, info: &ImageInfo) -> Result<Vec<u8>> {
+fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result<Vec<u8>> {
     let mut components = Components::new();
     let mut add = |name: &str, data: Option<Vec<u8>>| {
         if let Some(data) = data {
@@ -100,7 +100,15 @@ fn build_payload(ws: &Workspace, info: &ImageInfo) -> Result<Vec<u8>> {
             }
             add("ramdisk", ws.pack_ramdisk("ramdisk")?);
             add("dtb", ws.pack_dtb("dtb")?);
-            bootimg::build_boot(header, &components)?
+            let signature_edited = ws.recorded("boot_signature") && ws.changed("boot_signature")?;
+            let mut image = bootimg::build_boot(header, &components)?;
+            if header.header_version == 4
+                && !signature_edited
+                && let Some(signature) = components.get("boot_signature")
+            {
+                gki::resign(&mut image, signature, &components, key)?;
+            }
+            image
         }
         ImageInfo::VendorBoot { header } => {
             if header.ramdisks.is_empty() {

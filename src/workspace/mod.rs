@@ -8,6 +8,7 @@
 //! image.
 
 mod device_trees;
+mod gki;
 mod pack;
 mod ramdisks;
 mod unpack;
