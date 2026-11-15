@@ -1,6 +1,7 @@
 mod avb;
 mod compress;
 mod cpio;
+mod ramdisk;
 mod util;
 
 use clap::{Parser, Subcommand};
