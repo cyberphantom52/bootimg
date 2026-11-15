@@ -2,8 +2,10 @@
 //! defined by AOSP `system/tools/mkbootimg/include/bootimg/bootimg.h`.
 
 mod boot;
+mod vendor;
 
 pub use boot::{BootHeader, build_boot, parse_boot};
+pub use vendor::{VendorBootHeader, build_vendor_boot, parse_vendor_boot};
 
 use anyhow::{Result, bail, ensure};
 use std::collections::BTreeMap;
