@@ -3,6 +3,7 @@ mod bootimg;
 mod compress;
 mod cpio;
 mod dtb;
+mod dtbo;
 mod ramdisk;
 mod util;
 
