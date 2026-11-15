@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{AvbInfo, ImageInfo, Workspace, gki, split_footer};
+use super::{AvbInfo, ImageInfo, Workspace, gki, split_footer, vbmeta};
 use crate::{
     avb,
     bootimg::{self, Components},
@@ -14,6 +14,7 @@ use crate::{
 pub struct PackOptions<'a> {
     pub output: Option<&'a Path>,
     pub key: Option<&'a Path>,
+    pub vbmeta: Option<&'a Path>,
 }
 
 pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
@@ -37,6 +38,17 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
             "No changes; wrote the original image to {}",
             output.display()
         );
+        if let Some(path) = options.vbmeta {
+            let descriptor = avb_info
+                .as_ref()
+                .and_then(|info| {
+                    let partition = info.vbmeta.first_hash_partition()?;
+                    let mut vbmeta = info.vbmeta.clone();
+                    vbmeta.hash_descriptor_mut(partition).cloned()
+                })
+                .context("--vbmeta needs an image with an AVB hash footer")?;
+            vbmeta::update(path, &descriptor, options.key, &output)?;
+        }
         return Ok(());
     }
     if !changed.is_empty() {
@@ -54,6 +66,7 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
         original_payload.to_vec()
     };
 
+    let mut new_descriptor = None;
     if let Some(AvbInfo {
         partition_size,
         mut vbmeta,
@@ -72,6 +85,7 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
                 .to_string();
             let descriptor = vbmeta.hash_descriptor_mut(&partition).unwrap();
             avb::update_hash(descriptor, &image)?;
+            new_descriptor = Some(descriptor.clone());
             let blob = vbmeta.encode(key.as_ref())?;
             avb::append_footer(&mut image, &blob, partition_size)?;
         }
@@ -83,6 +97,12 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
 
     fs::write(&output, &image).with_context(|| format!("writing {}", output.display()))?;
     say!("Wrote {}", output.display());
+
+    if let Some(path) = options.vbmeta {
+        let descriptor = new_descriptor
+            .context("--vbmeta needs an image with an AVB hash footer to take the new hash from")?;
+        vbmeta::update(path, &descriptor, options.key, &output)?;
+    }
     Ok(())
 }
 

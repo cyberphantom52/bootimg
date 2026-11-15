@@ -58,6 +58,9 @@ enum Command {
         /// RSA private key (PEM or DER) to sign with instead of the AOSP test key
         #[arg(long)]
         key: Option<PathBuf>,
+        /// Also update this partition's hash in a vbmeta image, writing <vbmeta>.signed
+        #[arg(long)]
+        vbmeta: Option<PathBuf>,
     },
     /// Show an image's layout and verify its AVB metadata
     Info { image: PathBuf },
@@ -86,11 +89,13 @@ fn main() -> ExitCode {
             workspace,
             output,
             key,
+            vbmeta,
         } => workspace::pack(
             &workspace,
             &workspace::PackOptions {
                 output: output.as_deref(),
                 key: key.as_deref(),
+                vbmeta: vbmeta.as_deref(),
             },
         ),
         Command::Info { image } => info::show(&image),

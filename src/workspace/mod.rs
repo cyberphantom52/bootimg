@@ -12,6 +12,7 @@ mod gki;
 mod pack;
 mod ramdisks;
 mod unpack;
+mod vbmeta;
 
 pub use pack::{PackOptions, pack};
 pub use unpack::unpack;

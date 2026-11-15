@@ -296,3 +296,60 @@ fn device_tree_sources_are_compiled_on_pack() {
     let error = fails(&[p("pack"), &check, p("-o"), &tmp.path().join("x.img")]);
     assert!(error.contains("keep only one of the edits"), "{error}");
 }
+
+#[test]
+fn vbmeta_follows_edited_partitions_and_can_disable_verification() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = unpack(tmp.path(), &fixture("vendor_boot.img"));
+    fs::write(ws.join("vendor_ramdisk.1/fstab"), "edited\n").unwrap();
+    let output = tmp.path().join("vendor_boot.img");
+    let log = pack(&ws, &output, &[p("--vbmeta"), &fixture("vbmeta.img")]);
+    assert!(log.contains("Updated vendor_boot in"), "{log}");
+
+    // The new vbmeta carries vendor_boot's new hash and the original chain to boot.
+    let vbmeta = tmp.path().join("vbmeta.img.signed");
+    let info = run(&[p("info"), &vbmeta]);
+    assert!(
+        info.contains("valid signature by AOSP testkey_rsa4096"),
+        "{info}"
+    );
+    assert!(info.contains("chain boot (rollback location 1)"), "{info}");
+    let digest = |avb: &Value| {
+        avb["vbmeta"]["descriptors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["partition_name"] == "vendor_boot")
+            .unwrap()["digest"]
+            .clone()
+    };
+    let check = tmp.path().join("check");
+    run(&[p("unpack"), &vbmeta, p("-o"), &check]);
+    let new_footer = tmp.path().join("footer");
+    run(&[p("unpack"), &output, p("-o"), &new_footer]);
+    assert_eq!(
+        digest(&json(&check.join("avb.json"))),
+        digest(&json(&new_footer.join("avb.json")))
+    );
+    assert_ne!(
+        digest(&json(&check.join("avb.json"))),
+        digest(&json(&ws.join("avb.json")))
+    );
+
+    // Disabling verification, as in `avbtool make_vbmeta_image --flags 2`.
+    let mut avb = json(&check.join("avb.json"));
+    avb["vbmeta"]["flags"] = 2.into();
+    fs::write(check.join("avb.json"), avb.to_string()).unwrap();
+    let disabled = tmp.path().join("disabled.img");
+    pack(&check, &disabled, &[]);
+    let info = run(&[p("info"), &disabled]);
+    assert!(
+        info.contains("flags 2") && info.contains("valid signature"),
+        "{info}"
+    );
+    assert_eq!(
+        fs::metadata(&disabled).unwrap().len(),
+        4096,
+        "padding is kept"
+    );
+}
