@@ -1,4 +1,5 @@
 mod avb;
+mod bootimg;
 mod compress;
 mod cpio;
 mod ramdisk;

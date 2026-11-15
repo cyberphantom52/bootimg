@@ -83,3 +83,54 @@ pub mod hex {
         decode(&text).map_err(serde::de::Error::custom)
     }
 }
+
+/// Serializes a u32 as a `0x`-prefixed hex string, accepting decimal or hex on input.
+pub mod hex32 {
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &u32, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{value:#010x}"))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+        super::parse_number::<D, u32>(deserializer)
+    }
+}
+
+pub mod hex64 {
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{value:#x}"))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        super::parse_number::<D, u64>(deserializer)
+    }
+}
+
+fn parse_number<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: TryFrom<u64>,
+{
+    use serde::Deserialize;
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Number {
+        Int(u64),
+        Text(String),
+    }
+    let value = match Number::deserialize(deserializer)? {
+        Number::Int(value) => value,
+        Number::Text(text) => {
+            let text = text.trim();
+            let parsed = match text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+                Some(digits) => u64::from_str_radix(digits, 16),
+                None => text.parse(),
+            };
+            parsed.map_err(|_| serde::de::Error::custom(format!("invalid number {text:?}")))?
+        }
+    };
+    T::try_from(value).map_err(|_| serde::de::Error::custom(format!("{value:#x} is out of range")))
+}
