@@ -2,6 +2,7 @@ mod avb;
 mod bootimg;
 mod compress;
 mod cpio;
+mod dtb;
 mod ramdisk;
 mod util;
 
