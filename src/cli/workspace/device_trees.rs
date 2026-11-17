@@ -3,7 +3,7 @@
 
 use super::Workspace;
 use crate::cli::{Error, Result, dtc, report};
-use bootimgctl::dtb;
+use bootimg::dtb;
 
 impl Workspace {
     fn dts_names(raw: &str, count: usize) -> Vec<String> {

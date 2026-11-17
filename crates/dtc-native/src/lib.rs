@@ -6,7 +6,7 @@
 use std::ffi::{CString, c_char, c_int};
 
 unsafe extern "C" {
-    fn bootimgctl_dtc_main(argc: c_int, argv: *mut *mut c_char) -> c_int;
+    fn bootimg_dtc_main(argc: c_int, argv: *mut *mut c_char) -> c_int;
 }
 
 /// Runs dtc with `args` (excluding argv[0]) and returns its exit status.
@@ -18,5 +18,5 @@ pub fn main(args: &[String]) -> i32 {
     let mut argv: Vec<*mut c_char> = args.iter().map(|arg| arg.as_ptr().cast_mut()).collect();
     argv.push(std::ptr::null_mut());
     // SAFETY: argv is a NULL-terminated array of NUL-terminated strings that outlive the call.
-    unsafe { bootimgctl_dtc_main((argv.len() - 1) as c_int, argv.as_mut_ptr()) }
+    unsafe { bootimg_dtc_main((argv.len() - 1) as c_int, argv.as_mut_ptr()) }
 }

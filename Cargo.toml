@@ -1,5 +1,5 @@
 [package]
-name = "bootimgctl"
+name = "bootimg"
 version = "0.1.0"
 edition = "2024"
 description = "Unpack, edit and repack Android boot, vendor_boot, vbmeta and dtbo images"
@@ -10,7 +10,7 @@ publish = false
 members = ["crates/dtc-native"]
 
 [dependencies]
-dtc_native = { package = "bootimgctl-dtc-native", path = "crates/dtc-native", optional = true }
+dtc_native = { package = "bootimg-dtc-native", path = "crates/dtc-native", optional = true }
 clap = { version = "4.6", features = ["derive"], optional = true }
 flate2 = "1.1"
 liblzma = { version = "0.4", features = ["static"] }
@@ -24,11 +24,11 @@ thiserror = "2"
 
 [features]
 default = ["cli"]
-# The bootimgctl binary, with its workspaces and the bundled dtc (GPL-2.0-or-later).
+# The bootimg binary, with its workspaces and the bundled dtc (GPL-2.0-or-later).
 cli = ["dep:clap", "dep:dtc_native", "dep:serde_json"]
 
 [[bin]]
-name = "bootimgctl"
+name = "bootimg"
 required-features = ["cli"]
 
 [dev-dependencies]

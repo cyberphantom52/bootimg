@@ -2,9 +2,9 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use super::{AvbInfo, ImageInfo, STATE_DIR, State, Workspace, detect, split_footer};
 use crate::cli::{Error, IoAt, Result};
-use bootimgctl::{
+use bootimg::{
     avb::{self, VbMeta},
-    bootimg, dtbo,
+    boot, dtbo,
 };
 
 pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
@@ -38,8 +38,8 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
     let mut contents = Vec::new();
     let info = match format {
         "boot" => {
-            let (header, layout) = bootimg::parse_boot(payload)?;
-            report_tail(payload, bootimg::content_end(&layout, header.page_size));
+            let (header, layout) = boot::parse_boot(payload)?;
+            report_tail(payload, boot::content_end(&layout, header.page_size));
             for (name, offset, size) in layout {
                 let bytes = &payload[offset as usize..(offset + size) as usize];
                 contents.push(match name.as_str() {
@@ -54,8 +54,8 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
             ImageInfo::Boot { header }
         }
         "vendor_boot" => {
-            let (header, layout) = bootimg::parse_vendor_boot(payload)?;
-            report_tail(payload, bootimg::content_end(&layout, header.page_size));
+            let (header, layout) = boot::parse_vendor_boot(payload)?;
+            report_tail(payload, boot::content_end(&layout, header.page_size));
             for (name, offset, size) in layout {
                 let bytes = &payload[offset as usize..(offset + size) as usize];
                 contents.push(match name.as_str() {

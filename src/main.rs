@@ -16,10 +16,10 @@ use std::{path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]
 #[command(
-    name = "bootimgctl",
+    name = "bootimg",
     version,
     about = "Unpack, edit and repack Android boot, vendor_boot, vbmeta, dtbo and dtb images",
-    after_help = "Typical use:\n  bootimgctl unpack boot.img\n  (edit files in boot/)\n  bootimgctl pack boot\n\n\
+    after_help = "Typical use:\n  bootimg unpack boot.img\n  (edit files in boot/)\n  bootimg pack boot\n\n\
         Edited images are re-signed with the original AVB parameters, using the AOSP test key \
         of the original key size unless --key is given."
 )]

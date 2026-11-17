@@ -1,12 +1,12 @@
 //! Android boot (v0-v4) and vendor_boot (v3-v4) image headers and layouts, as
 //! defined by AOSP `system/tools/mkbootimg/include/bootimg/bootimg.h`.
 
-mod boot;
+mod boot_image;
 mod gki;
 mod image;
 mod vendor;
 
-pub use boot::{Addresses, BootHeader, build_boot, parse_boot};
+pub use boot_image::{Addresses, BootHeader, build_boot, parse_boot};
 pub use gki::resign_gki;
 pub use image::{Header, Image};
 pub use vendor::{VendorBootHeader, VendorRamdisk, build_vendor_boot, parse_vendor_boot};

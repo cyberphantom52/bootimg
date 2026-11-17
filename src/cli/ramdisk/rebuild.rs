@@ -8,7 +8,7 @@ use std::{
 
 use super::{EntryMeta, Metadata, host_mode, host_path, is_special};
 use crate::cli::{Error, IoAt, Result};
-use bootimgctl::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
+use bootimg::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
 
 /// Every path under `root`, parents before children, in sorted order.
 fn walk(root: &Path) -> Result<Vec<(String, fs::Metadata)>> {
@@ -176,7 +176,7 @@ pub fn tree_digest(root: &Path) -> Result<String> {
 mod tests {
     use super::*;
     use crate::cli::ramdisk::extract::extract;
-    use bootimgctl::compress::Compression;
+    use bootimg::compress::Compression;
 
     #[test]
     fn rebuilding_keeps_recorded_metadata_and_picks_up_edits() {

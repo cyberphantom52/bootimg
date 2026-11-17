@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Regenerates the test images with the AOSP reference tools, so the tests can
-# check that bootimgctl reproduces their output byte for byte.
+# check that bootimg reproduces their output byte for byte.
 #
 # Usage: AOSP=<dir with system/tools/mkbootimg, avb, system/libufdt> tests/data/generate.sh
-# Needs python3, lz4, xz and a built bootimgctl (for its bundled dtc).
+# Needs python3, lz4, xz and a built bootimg (for its bundled dtc).
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -11,7 +11,7 @@ root=$(cd "$here/../.." && pwd)
 mkbootimg="python3 $AOSP/system/tools/mkbootimg/mkbootimg.py"
 avbtool="python3 $AOSP/avb/avbtool.v1.2.py"
 mkdtboimg="python3 $AOSP/system/libufdt/utils/src/mkdtboimg.py"
-dtc="$root/target/debug/bootimgctl dtc"
+dtc="$root/target/debug/bootimg dtc"
 keys="$root/keys"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

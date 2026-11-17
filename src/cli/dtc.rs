@@ -1,5 +1,5 @@
 //! Device tree (de)compilation through the bundled dtc, which runs in a child
-//! process of this executable (`bootimgctl dtc ...`) because it exits on errors.
+//! process of this executable (`bootimg dtc ...`) because it exits on errors.
 
 use std::{
     io::Write,

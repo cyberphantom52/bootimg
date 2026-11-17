@@ -6,9 +6,9 @@ use std::{
 
 use super::{AvbInfo, ImageInfo, Workspace, vbmeta};
 use crate::cli::{Error, IoAt, Result};
-use bootimgctl::{
+use bootimg::{
     avb::{self, Descriptor},
-    bootimg::{self, Components},
+    boot::{self, Components},
     dtbo,
 };
 
@@ -116,10 +116,10 @@ fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result
             add("ramdisk", ws.pack_ramdisk("ramdisk")?);
             add("dtb", ws.pack_dtb("dtb")?);
             let signature_edited = ws.recorded("boot_signature") && ws.changed("boot_signature")?;
-            let mut image = bootimg::build_boot(header, &components)?;
+            let mut image = boot::build_boot(header, &components)?;
             if header.header_version == 4
                 && !signature_edited
-                && bootimg::resign_gki(&mut image, &components, key)?
+                && boot::resign_gki(&mut image, &components, key)?
             {
                 say!("Regenerated the GKI boot signature");
             }
@@ -136,7 +136,7 @@ fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result
             }
             add("dtb", ws.pack_dtb("dtb")?);
             add("bootconfig", ws.read_optional("bootconfig")?);
-            bootimg::build_vendor_boot(header, &components)?
+            boot::build_vendor_boot(header, &components)?
         }
         ImageInfo::Dtbo { table } => {
             let mut trees = Vec::new();

@@ -25,27 +25,24 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn run(args: &[&Path]) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_bootimgctl"))
+    let output = Command::new(env!("CARGO_BIN_EXE_bootimg"))
         .args(args)
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&output.stdout).into_owned()
         + &String::from_utf8_lossy(&output.stderr);
-    assert!(
-        output.status.success(),
-        "bootimgctl {args:?} failed:\n{text}"
-    );
+    assert!(output.status.success(), "bootimg {args:?} failed:\n{text}");
     text
 }
 
 fn fails(args: &[&Path]) -> String {
-    let output = Command::new(env!("CARGO_BIN_EXE_bootimgctl"))
+    let output = Command::new(env!("CARGO_BIN_EXE_bootimg"))
         .args(args)
         .output()
         .unwrap();
     assert!(
         !output.status.success(),
-        "bootimgctl {args:?} unexpectedly succeeded"
+        "bootimg {args:?} unexpectedly succeeded"
     );
     String::from_utf8_lossy(&output.stderr).into_owned()
 }

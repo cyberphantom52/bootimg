@@ -1,10 +1,10 @@
-//! `bootimgctl info`: a readable summary of an image, including AVB verification.
+//! `bootimg info`: a readable summary of an image, including AVB verification.
 
 use std::{fs, path::Path};
 
-use bootimgctl::{
+use bootimg::{
     avb::{self, Descriptor, Footer, Signature, VbMeta},
-    bootimg,
+    boot,
     compress::Compression,
     dtb, dtbo,
 };
@@ -21,7 +21,7 @@ pub fn show(path: &Path) -> Result<()> {
 
     match payload.get(..4) {
         Some(b"ANDR") => {
-            let (header, layout) = bootimg::parse_boot(payload)?;
+            let (header, layout) = boot::parse_boot(payload)?;
             say!(
                 "Boot image, header v{}, page size {}",
                 header.header_version,
@@ -45,7 +45,7 @@ pub fn show(path: &Path) -> Result<()> {
             }
         }
         Some(b"VNDR") => {
-            let (header, layout) = bootimg::parse_vendor_boot(payload)?;
+            let (header, layout) = boot::parse_vendor_boot(payload)?;
             say!(
                 "Vendor boot image, header v{}, page size {}",
                 header.header_version,
@@ -82,7 +82,7 @@ pub fn show(path: &Path) -> Result<()> {
         }
         _ => {
             let format = "a boot, vendor_boot, vbmeta, dtbo or dtb image";
-            return Err(bootimgctl::Error::Format(format).into());
+            return Err(bootimg::Error::Format(format).into());
         }
     }
 
@@ -127,7 +127,7 @@ fn print_cmdline(cmdline: &str) {
     }
 }
 
-fn print_layout(payload: &[u8], layout: &bootimg::Layout) {
+fn print_layout(payload: &[u8], layout: &boot::Layout) {
     for (name, offset, size) in layout {
         let data = &payload[*offset as usize..(offset + size) as usize];
         let detail = if name.contains("ramdisk") {

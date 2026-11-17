@@ -9,7 +9,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
-    Image(#[from] bootimgctl::Error),
+    Image(#[from] bootimg::Error),
     #[error("cannot access {path}")]
     Io {
         path: PathBuf,
@@ -22,7 +22,7 @@ pub enum Error {
         #[source]
         source: serde_json::Error,
     },
-    #[error("{0} is not a bootimgctl workspace")]
+    #[error("{0} is not a bootimg workspace")]
     NotAWorkspace(PathBuf),
     #[error("{0} already exists; use --force to replace a previous workspace")]
     WorkspaceExists(PathBuf),
@@ -32,7 +32,7 @@ pub enum Error {
     VbmetaImage {
         path: PathBuf,
         #[source]
-        source: bootimgctl::Error,
+        source: bootimg::Error,
     },
     #[error("--vbmeta needs an image with an AVB hash footer to take the hash from")]
     NoFooterForVbmeta,

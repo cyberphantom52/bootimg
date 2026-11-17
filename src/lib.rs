@@ -5,12 +5,12 @@
 //! tools (mkbootimg, avbtool, mkdtboimg) write for the same inputs, so an
 //! image that is parsed and rebuilt unchanged comes out identical.
 //!
-//! The `cli` feature (on by default) builds the `bootimgctl` binary, with its
+//! The `cli` feature (on by default) builds the `bootimg` binary, with its
 //! on-disk workspaces and the bundled dtc; disable default features to use
 //! only the library.
 
 pub mod avb;
-pub mod bootimg;
+pub mod boot;
 pub mod compress;
 pub mod cpio;
 pub mod dtb;

@@ -13,8 +13,8 @@ fn main() {
         .include("generated")
         .include(&out)
         .define("NO_YAML", None)
-        // dtc is only ever entered through `bootimgctl_dtc_main` in a dedicated process.
-        .define("main", "bootimgctl_dtc_main")
+        // dtc is only ever entered through `bootimg_dtc_main` in a dedicated process.
+        .define("main", "bootimg_dtc_main")
         .flag_if_supported("-std=gnu11")
         .flag_if_supported("-Wno-unused-parameter")
         .flag_if_supported("-Wno-sign-compare")

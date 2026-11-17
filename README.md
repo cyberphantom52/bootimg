@@ -1,13 +1,13 @@
-# bootimgctl
+# bootimg
 
 Unpack, edit and repack Android boot images: a single self-contained binary in
 the spirit of [Android_boot_image_editor](https://github.com/cfig/Android_boot_image_editor),
 with no Java, Python or external tools needed at runtime.
 
 ```console
-$ bootimgctl unpack boot.img          # creates boot/
+$ bootimg unpack boot.img          # creates boot/
 $ $EDITOR boot/ramdisk/init.rc        # edit files, headers, device trees...
-$ bootimgctl pack boot                # writes boot.img.signed
+$ bootimg pack boot                # writes boot.img.signed
 ```
 
 ## Supported images
@@ -68,12 +68,12 @@ When the partition's hash lives in a vbmeta image, pass that image with
 `--vbmeta`. pack then writes an updated, re-signed copy next to the output:
 
 ```console
-$ bootimgctl pack vendor_boot --vbmeta vbmeta.img   # vendor_boot.img.signed, vbmeta.img.signed
+$ bootimg pack vendor_boot --vbmeta vbmeta.img   # vendor_boot.img.signed, vbmeta.img.signed
 ```
 
 Test-key signatures are only accepted by unlocked bootloaders.
 
-`bootimgctl info IMAGE` shows an image's layout, AVB descriptors, and whether
+`bootimg info IMAGE` shows an image's layout, AVB descriptors, and whether
 signatures and hashes verify.
 
 ## Building
@@ -92,10 +92,10 @@ The formats are also a library. With `default-features = false`, it builds
 without the command-line tool and its dtc:
 
 ```toml
-bootimgctl = { git = "https://github.com/cyberphantom52/bootimgctl", default-features = false }
+bootimg = { git = "https://github.com/cyberphantom52/bootimg", default-features = false }
 ```
 
-`bootimg::Image` takes a boot or vendor_boot image apart into its header,
+`boot::Image` takes a boot or vendor_boot image apart into its header,
 components and AVB footer, and writes it back with changed components,
 regenerating the GKI signature and re-signing the footer. The footer's padding
 is seeked over rather than written, so in a new file it takes no space.

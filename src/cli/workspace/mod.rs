@@ -24,13 +24,13 @@ use std::{
 };
 
 use crate::cli::{Error, IoAt, Result, ramdisk, sha256_hex};
-use bootimgctl::{
+use bootimg::{
     avb::{self, HashFooter},
-    bootimg::{BootHeader, VendorBootHeader},
+    boot::{BootHeader, VendorBootHeader},
     dtbo::Dtbo,
 };
 
-const STATE_DIR: &str = ".bootimgctl";
+const STATE_DIR: &str = ".bootimg";
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "format", rename_all = "snake_case")]
@@ -156,7 +156,7 @@ fn detect(payload: &[u8]) -> Result<&'static str> {
         [0xd0, 0x0d, 0xfe, 0xed, ..] => "dtb",
         _ => {
             let format = "a boot, vendor_boot, vbmeta, dtbo or dtb image";
-            return Err(bootimgctl::Error::Format(format).into());
+            return Err(bootimg::Error::Format(format).into());
         }
     })
 }
