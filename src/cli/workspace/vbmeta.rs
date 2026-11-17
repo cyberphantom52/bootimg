@@ -1,8 +1,8 @@
 //! Updating a partition's hash in a separate vbmeta image.
 
-use anyhow::{Context, Result};
 use std::{fs, path::Path};
 
+use crate::cli::{Error, IoAt, Result};
 use bootimgctl::avb::{self, Descriptor, VbMeta};
 
 /// Replaces the hash descriptor for `descriptor`'s partition in the vbmeta
@@ -13,8 +13,11 @@ pub(super) fn update(
     key: Option<&Path>,
     output: &Path,
 ) -> Result<()> {
-    let data = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    let (mut vbmeta, _) = VbMeta::parse(&data).context("parsing the --vbmeta image")?;
+    let data = fs::read(path).at(path)?;
+    let (mut vbmeta, _) = VbMeta::parse(&data).map_err(|source| Error::VbmetaImage {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let Descriptor::Hash { partition_name, .. } = descriptor else {
         unreachable!()
     };
@@ -48,7 +51,7 @@ pub(super) fn update(
         .file_name()
         .map_or("vbmeta.img".into(), |n| n.to_string_lossy().into_owned());
     let destination = output.with_file_name(format!("{name}.signed"));
-    fs::write(&destination, image)?;
+    fs::write(&destination, image).at(&destination)?;
     say!(
         "Updated {partition_name} in {} and wrote {}",
         path.display(),

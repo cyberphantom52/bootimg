@@ -1,13 +1,15 @@
 //! The vbmeta struct: header, authentication block and auxiliary block.
 
-use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
 use super::{
     Algorithm, Descriptor,
     key::{Key, decode_public_key},
 };
-use crate::util::{align, be32, be64, cstr, hex, put_cstr, slice};
+use crate::{
+    Error, Result,
+    util::{align, be32, be64, cstr, hex, put_cstr, slice},
+};
 
 const HEADER_SIZE: usize = 256;
 
@@ -40,7 +42,9 @@ impl VbMeta {
     /// Parses a vbmeta blob, returning it with the result of checking its signature.
     pub fn parse(data: &[u8]) -> Result<(Self, Signature)> {
         let header = slice(data, 0, HEADER_SIZE as u64, "vbmeta header")?;
-        ensure!(&header[..4] == b"AVB0", "missing AVB0 vbmeta magic");
+        if &header[..4] != b"AVB0" {
+            return Err(Error::Format("a vbmeta blob"));
+        }
         let auth_size = be64(header, 12);
         let aux_size = be64(header, 20);
         let algorithm = Algorithm::from_id(be32(header, 28))?;
@@ -125,7 +129,7 @@ impl VbMeta {
     /// the algorithm's key size is adjusted to match the key.
     pub fn encode(&mut self, key: Option<&Key>) -> Result<Vec<u8>> {
         if self.algorithm != Algorithm::NONE {
-            let key = key.context("signing key required")?;
+            let key = key.ok_or(Error::NoKey(self.algorithm))?;
             self.algorithm = self.algorithm.with_key_bits(key.bits())?;
             self.public_key = key.avb_public_key();
         }
@@ -198,14 +202,6 @@ impl VbMeta {
         self.descriptors.iter_mut().find(|d| {
             matches!(d, Descriptor::Hash { partition_name, .. } | Descriptor::Hashtree { partition_name, .. }
                 if partition_name == partition)
-        })
-    }
-
-    /// The partition name of the first hash descriptor, used for footers.
-    pub fn first_hash_partition(&self) -> Option<&str> {
-        self.descriptors.iter().find_map(|d| match d {
-            Descriptor::Hash { partition_name, .. } => Some(partition_name.as_str()),
-            _ => None,
         })
     }
 }

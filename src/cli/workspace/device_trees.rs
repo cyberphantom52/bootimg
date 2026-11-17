@@ -1,10 +1,8 @@
 //! Device trees in a workspace: the raw blob plus one decompiled source per
 //! tree (`dtb.dts`, or `dtb.N.dts` for a blob holding several).
 
-use anyhow::{Result, ensure};
-
 use super::Workspace;
-use crate::cli::dtc;
+use crate::cli::{Error, Result, dtc, report};
 use bootimgctl::dtb;
 
 impl Workspace {
@@ -27,7 +25,7 @@ impl Workspace {
                     self.write(name, dts.as_bytes())?;
                     decompiled += 1;
                 }
-                Err(error) => eprintln!("warning: not decompiling {name}: {error:#}"),
+                Err(error) => eprintln!("warning: not decompiling {name}: {}", report(&error)),
             }
         }
         Ok(match decompiled {
@@ -41,7 +39,9 @@ impl Workspace {
     /// original with edited sources compiled in place of their trees.
     pub(super) fn pack_dtb(&self, raw: &str) -> Result<Option<Vec<u8>>> {
         if !self.exists(raw) {
-            ensure!(!self.recorded(raw), "{raw} was deleted");
+            if self.recorded(raw) {
+                return Err(Error::Deleted(raw.to_string()));
+            }
             return Ok(None);
         }
         let data = self.read(raw)?;
@@ -57,10 +57,9 @@ impl Workspace {
                             .strip_prefix('.')
                             .is_some_and(|n| n.parse::<usize>().is_ok())
                 });
-                ensure!(
-                    !ours || !self.exists(name) || !self.changed(name)?,
-                    "both {raw} and {name} were changed; keep only one of the edits"
-                );
+                if ours && self.exists(name) && self.changed(name)? {
+                    return Err(Error::ConflictingEdits(raw.to_string(), name.clone()));
+                }
             }
             return Ok(Some(data));
         }

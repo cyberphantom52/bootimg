@@ -1,4 +1,3 @@
-use anyhow::{Context, Result};
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -7,11 +6,12 @@ use std::{
 };
 
 use super::{EntryMeta, host_mode, host_path, is_special};
+use crate::cli::{IoAt, Result};
 use bootimgctl::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
 
 /// Writes `entries` under `root` (which must not exist) and returns their metadata.
 pub fn extract(entries: Vec<Entry>, root: &Path) -> Result<Vec<EntryMeta>> {
-    fs::create_dir(root).with_context(|| format!("creating {}", root.display()))?;
+    fs::create_dir(root).at(root)?;
 
     // Hardlinked files carry their data in only one of the links.
     let mut linked: HashMap<u32, Vec<u8>> = HashMap::new();
@@ -67,20 +67,18 @@ pub fn extract(entries: Vec<Entry>, root: &Path) -> Result<Vec<EntryMeta>> {
                 continue;
             }
             if existing.is_dir() {
-                fs::remove_dir_all(&target)?;
+                fs::remove_dir_all(&target).at(&target)?;
             } else {
-                fs::remove_file(&target)?;
+                fs::remove_file(&target).at(&target)?;
             }
         }
-        let context = || format!("extracting {}", target.display());
         match entry.mode & S_IFMT {
             S_IFDIR => {
-                fs::create_dir_all(&target).with_context(context)?;
+                fs::create_dir_all(&target).at(&target)?;
                 directories.push((target, entry.mode));
             }
             S_IFLNK => {
-                symlink(String::from_utf8_lossy(&entry.data).as_ref(), &target)
-                    .with_context(context)?;
+                symlink(String::from_utf8_lossy(&entry.data).as_ref(), &target).at(&target)?;
                 symlinks.insert(path);
             }
             _ => {
@@ -89,16 +87,17 @@ pub fn extract(entries: Vec<Entry>, root: &Path) -> Result<Vec<EntryMeta>> {
                     _ => &entry.data,
                 };
                 if let Some(parent) = target.parent() {
-                    fs::create_dir_all(parent).with_context(context)?;
+                    fs::create_dir_all(parent).at(parent)?;
                 }
-                fs::write(&target, data).with_context(context)?;
-                fs::set_permissions(&target, fs::Permissions::from_mode(host_mode(entry.mode)))?;
+                fs::write(&target, data).at(&target)?;
+                fs::set_permissions(&target, fs::Permissions::from_mode(host_mode(entry.mode)))
+                    .at(&target)?;
             }
         }
     }
     // Directory modes last, so read-only directories don't block their contents.
     for (path, mode) in directories.into_iter().rev() {
-        fs::set_permissions(&path, fs::Permissions::from_mode(host_mode(mode)))?;
+        fs::set_permissions(&path, fs::Permissions::from_mode(host_mode(mode))).at(&path)?;
     }
     Ok(metadata)
 }

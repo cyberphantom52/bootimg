@@ -10,7 +10,6 @@ mod rebuild;
 
 pub use rebuild::tree_digest;
 
-use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -18,6 +17,8 @@ use bootimgctl::{
     compress::Compression,
     cpio::{self, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG},
 };
+
+use crate::cli::{Error, Result};
 
 #[derive(Serialize, Deserialize)]
 pub struct Metadata {
@@ -57,12 +58,16 @@ mod octal {
     }
 }
 
+fn json(value: &impl Serialize) -> String {
+    serde_json::to_string(value).expect("ramdisk metadata serializes")
+}
+
 impl Metadata {
     /// Pretty JSON with one entry per line, so diffs stay readable.
-    pub fn to_json(&self) -> Result<String> {
+    pub fn to_json(&self) -> String {
         let mut out = format!(
             "{{\n  \"compression\": {},\n  \"entries\": [\n",
-            serde_json::to_string(&self.compression)?
+            json(&self.compression)
         );
         for (index, entry) in self.entries.iter().enumerate() {
             let separator = if index + 1 == self.entries.len() {
@@ -70,10 +75,10 @@ impl Metadata {
             } else {
                 ","
             };
-            out += &format!("    {}{separator}\n", serde_json::to_string(entry)?);
+            out += &format!("    {}{separator}\n", json(entry));
         }
         out += "  ]\n}\n";
-        Ok(out)
+        out
     }
 }
 
@@ -83,7 +88,7 @@ fn host_path(name: &str) -> Result<Option<String>> {
     for part in name.split('/') {
         match part {
             "" | "." => {}
-            ".." => bail!("archive path {name:?} escapes the ramdisk root"),
+            ".." => return Err(Error::EscapingPath(name.to_string())),
             part => parts.push(part),
         }
     }
@@ -117,5 +122,5 @@ pub fn unpack(bytes: &[u8], root: &Path) -> Result<Metadata> {
 
 pub fn pack(root: &Path, metadata: &Metadata) -> Result<Vec<u8>> {
     let archive = cpio::write(&rebuild::rebuild(root, metadata)?);
-    metadata.compression.compress(&archive)
+    Ok(metadata.compression.compress(&archive)?)
 }

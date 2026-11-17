@@ -1,4 +1,3 @@
-use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -8,6 +7,7 @@ use std::{
 };
 
 use super::{EntryMeta, Metadata, host_mode, host_path, is_special};
+use crate::cli::{Error, IoAt, Result};
 use bootimgctl::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
 
 /// Every path under `root`, parents before children, in sorted order.
@@ -19,20 +19,20 @@ fn walk(root: &Path) -> Result<Vec<(String, fs::Metadata)>> {
             root.join(relative)
         };
         let mut names: Vec<_> = fs::read_dir(&directory)
-            .with_context(|| format!("reading {}", directory.display()))?
-            .map(|entry| Ok(entry?.file_name()))
+            .at(&directory)?
+            .map(|entry| Ok(entry.at(&directory)?.file_name()))
             .collect::<Result<_>>()?;
         names.sort();
         for name in names {
             let name = name
                 .into_string()
-                .map_err(|name| anyhow::anyhow!("non-UTF-8 file name {name:?} in ramdisk"))?;
+                .map_err(|name| Error::NonUtf8Path(directory.join(name)))?;
             let path = if relative.is_empty() {
                 name
             } else {
                 format!("{relative}/{name}")
             };
-            let metadata = fs::symlink_metadata(root.join(&path))?;
+            let metadata = fs::symlink_metadata(root.join(&path)).at(root.join(&path))?;
             let is_dir = metadata.is_dir();
             out.push((path.clone(), metadata));
             if is_dir {
@@ -46,7 +46,7 @@ fn walk(root: &Path) -> Result<Vec<(String, fs::Metadata)>> {
     Ok(out)
 }
 
-fn host_type(metadata: &fs::Metadata) -> Result<u32> {
+fn host_type(path: &Path, metadata: &fs::Metadata) -> Result<u32> {
     let kind = metadata.file_type();
     Ok(if kind.is_dir() {
         S_IFDIR
@@ -55,15 +55,18 @@ fn host_type(metadata: &fs::Metadata) -> Result<u32> {
     } else if kind.is_file() {
         S_IFREG
     } else {
-        bail!("ramdisk trees may only contain files, directories and symlinks")
+        return Err(Error::SpecialFile(path.to_path_buf()));
     })
 }
 
 fn contents(root: &Path, path: &str, kind: u32) -> Result<Vec<u8>> {
     let full = root.join(path);
     Ok(match kind {
-        S_IFREG => fs::read(&full)?,
-        S_IFLNK => fs::read_link(&full)?.into_os_string().into_encoded_bytes(),
+        S_IFREG => fs::read(&full).at(&full)?,
+        S_IFLNK => fs::read_link(&full)
+            .at(&full)?
+            .into_os_string()
+            .into_encoded_bytes(),
         _ => Vec::new(),
     })
 }
@@ -106,7 +109,7 @@ pub fn rebuild(root: &Path, metadata: &Metadata) -> Result<Vec<Entry>> {
                 meta.path.clone(),
             ),
             (Some(meta), Some(host)) => {
-                let kind = host_type(host)?;
+                let kind = host_type(&root.join(&path), host)?;
                 let host_permissions = host.permissions().mode() & 0o777;
                 let mode = if kind != meta.mode & S_IFMT {
                     kind | host_permissions
@@ -125,7 +128,7 @@ pub fn rebuild(root: &Path, metadata: &Metadata) -> Result<Vec<Entry>> {
                 )
             }
             (None, Some(host)) => {
-                let kind = host_type(host)?;
+                let kind = host_type(&root.join(&path), host)?;
                 let executable = host.permissions().mode() & 0o111 != 0;
                 let permissions = if kind == S_IFLNK {
                     0o777
@@ -160,7 +163,7 @@ pub fn rebuild(root: &Path, metadata: &Metadata) -> Result<Vec<Entry>> {
 pub fn tree_digest(root: &Path) -> Result<String> {
     let mut hasher = Sha256::new();
     for (path, metadata) in walk(root)? {
-        let kind = host_type(&metadata)?;
+        let kind = host_type(&root.join(&path), &metadata)?;
         hasher.update(path.as_bytes());
         hasher.update([0]);
         hasher.update((kind | metadata.permissions().mode() & 0o7777).to_le_bytes());

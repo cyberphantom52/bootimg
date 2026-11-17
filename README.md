@@ -86,6 +86,20 @@ $ cargo build --release
 A C compiler is needed for the bundled [dtc](https://git.kernel.org/pub/scm/utils/dtc/dtc.git)
 (`crates/dtc-native`) and the compression libraries.
 
+## Library
+
+The formats are also a library. With `default-features = false`, it builds
+without the command-line tool and its dtc:
+
+```toml
+bootimgctl = { git = "https://github.com/cyberphantom52/bootimgctl", default-features = false }
+```
+
+`bootimg::Image` takes a boot or vendor_boot image apart into its header,
+components and AVB footer, and writes it back with changed components,
+regenerating the GKI signature and re-signing the footer. The footer's padding
+is seeked over rather than written, so in a new file it takes no space.
+
 ## Testing
 
 The test images in `tests/data` are made with the AOSP reference tools

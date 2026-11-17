@@ -1,12 +1,13 @@
-use anyhow::{Context, Result, ensure};
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
 };
 
-use super::{AvbInfo, ImageInfo, Workspace, gki, split_footer, vbmeta};
+use super::{AvbInfo, ImageInfo, Workspace, vbmeta};
+use crate::cli::{Error, IoAt, Result};
 use bootimgctl::{
-    avb,
+    avb::{self, Descriptor},
     bootimg::{self, Components},
     dtbo,
 };
@@ -20,7 +21,7 @@ pub struct PackOptions<'a> {
 pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
     let ws = Workspace::open(dir)?;
     let original = ws.original()?;
-    let (original_payload, _) = split_footer(&original)?;
+    let (original_payload, ..) = avb::HashFooter::split(&original)?;
     let info: ImageInfo = ws.read_json("image.json")?;
     let avb_info: Option<AvbInfo> = ws
         .exists("avb.json")
@@ -33,20 +34,15 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
         None => PathBuf::from(format!("{}.signed", ws.state.source)),
     };
     if changed.is_empty() && options.key.is_none() {
-        fs::write(&output, &original)?;
+        fs::write(&output, &original).at(&output)?;
         say!(
             "No changes; wrote the original image to {}",
             output.display()
         );
         if let Some(path) = options.vbmeta {
             let descriptor = avb_info
-                .as_ref()
-                .and_then(|info| {
-                    let partition = info.vbmeta.first_hash_partition()?;
-                    let mut vbmeta = info.vbmeta.clone();
-                    vbmeta.hash_descriptor_mut(partition).cloned()
-                })
-                .context("--vbmeta needs an image with an AVB hash footer")?;
+                .and_then(|info| info.vbmeta.descriptors.into_iter().find(is_hash))
+                .ok_or(Error::NoFooterForVbmeta)?;
             vbmeta::update(path, &descriptor, options.key, &output)?;
         }
         return Ok(());
@@ -58,7 +54,7 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
     // Only AVB metadata edits keep the original payload; a vbmeta image is
     // nothing but its metadata.
     let payload_changed = changed.iter().any(|name| name != "avb.json");
-    let mut image = if matches!(info, ImageInfo::Vbmeta) {
+    let image = if matches!(info, ImageInfo::Vbmeta) {
         Vec::new()
     } else if payload_changed {
         build_payload(&ws, &info, options.key)?
@@ -66,44 +62,43 @@ pub fn pack(dir: &Path, options: &PackOptions) -> Result<()> {
         original_payload.to_vec()
     };
 
+    let mut file = fs::File::create(&output).at(&output)?;
     let mut new_descriptor = None;
-    if let Some(AvbInfo {
-        partition_size,
-        mut vbmeta,
-    }) = avb_info
-    {
-        let key = avb::signing_key(vbmeta.algorithm, options.key)?;
-        if matches!(info, ImageInfo::Vbmeta) {
-            image = vbmeta.encode(key.as_ref())?;
-            if (image.len() as u64) < partition_size {
-                image.resize(partition_size as usize, 0);
+    match avb_info {
+        Some(mut avb_info) => {
+            let key = avb::signing_key(avb_info.vbmeta.algorithm, options.key)?;
+            if matches!(info, ImageInfo::Vbmeta) {
+                let mut blob = avb_info.vbmeta.encode(key.as_ref())?;
+                if (blob.len() as u64) < avb_info.partition_size {
+                    blob.resize(avb_info.partition_size as usize, 0);
+                }
+                file.write_all(&blob).at(&output)?;
+            } else {
+                file.write_all(&image).at(&output)?;
+                new_descriptor = Some(avb_info.write(&mut file, &image, options.key)?);
             }
-        } else {
-            let partition = vbmeta
-                .first_hash_partition()
-                .context("the AVB footer has no hash descriptor")?
-                .to_string();
-            let descriptor = vbmeta.hash_descriptor_mut(&partition).unwrap();
-            avb::update_hash(descriptor, &image)?;
-            new_descriptor = Some(descriptor.clone());
-            let blob = vbmeta.encode(key.as_ref())?;
-            avb::append_footer(&mut image, &blob, partition_size)?;
+            match &key {
+                Some(key) => say!(
+                    "Signed {:?} with {}",
+                    avb_info.vbmeta.algorithm,
+                    key.description
+                ),
+                None => say!("AVB metadata updated (algorithm NONE, unsigned)"),
+            }
         }
-        match &key {
-            Some(key) => say!("Signed {:?} with {}", vbmeta.algorithm, key.description),
-            None => say!("AVB metadata updated (algorithm NONE, unsigned)"),
-        }
+        None => file.write_all(&image).at(&output)?,
     }
-
-    fs::write(&output, &image).with_context(|| format!("writing {}", output.display()))?;
     say!("Wrote {}", output.display());
 
     if let Some(path) = options.vbmeta {
-        let descriptor = new_descriptor
-            .context("--vbmeta needs an image with an AVB hash footer to take the new hash from")?;
+        let descriptor = new_descriptor.ok_or(Error::NoFooterForVbmeta)?;
         vbmeta::update(path, &descriptor, options.key, &output)?;
     }
     Ok(())
+}
+
+fn is_hash(descriptor: &Descriptor) -> bool {
+    matches!(descriptor, Descriptor::Hash { .. })
 }
 
 fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result<Vec<u8>> {
@@ -124,9 +119,9 @@ fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result
             let mut image = bootimg::build_boot(header, &components)?;
             if header.header_version == 4
                 && !signature_edited
-                && let Some(signature) = components.get("boot_signature")
+                && bootimg::resign_gki(&mut image, &components, key)?
             {
-                gki::resign(&mut image, signature, &components, key)?;
+                say!("Regenerated the GKI boot signature");
             }
             image
         }
@@ -136,13 +131,8 @@ fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result
             }
             for entry in &header.ramdisks {
                 let data = ws.pack_ramdisk(&entry.file)?;
-                ensure!(
-                    data.is_some(),
-                    "{}.img for the ramdisk table row {:?} is missing",
-                    entry.file,
-                    entry.name
-                );
-                add(&entry.file, data);
+                let data = data.ok_or_else(|| Error::Missing(format!("{}.img", entry.file)))?;
+                add(&entry.file, Some(data));
             }
             add("dtb", ws.pack_dtb("dtb")?);
             add("bootconfig", ws.read_optional("bootconfig")?);
@@ -153,12 +143,14 @@ fn build_payload(ws: &Workspace, info: &ImageInfo, key: Option<&Path>) -> Result
             for entry in &table.entries {
                 trees.push(
                     ws.pack_dtb(&entry.file)?
-                        .with_context(|| format!("{} is missing", entry.file))?,
+                        .ok_or_else(|| Error::Missing(entry.file.clone()))?,
                 );
             }
             dtbo::build_dtbo(table, &trees)?
         }
-        ImageInfo::Dtb => ws.pack_dtb("dtb")?.context("dtb is missing")?,
+        ImageInfo::Dtb => ws
+            .pack_dtb("dtb")?
+            .ok_or_else(|| Error::Missing("dtb".into()))?,
         ImageInfo::Vbmeta => unreachable!(),
     })
 }

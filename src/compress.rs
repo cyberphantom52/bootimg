@@ -1,9 +1,10 @@
 //! Ramdisk compression formats, detected by magic and re-encoded with the same settings.
 
-use anyhow::{Context, Result, bail};
 use liblzma::stream::{Check, LzmaOptions, Stream};
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
+
+use crate::{Error, Result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,6 +55,16 @@ impl Compression {
     }
 
     pub fn decompress(self, data: &[u8]) -> Result<Vec<u8>> {
+        self.decode(data)
+            .map_err(|source| Error::Compression(self.name(), source))
+    }
+
+    pub fn compress(self, data: &[u8]) -> Result<Vec<u8>> {
+        self.encode(data)
+            .map_err(|source| Error::Compression(self.name(), source))
+    }
+
+    fn decode(self, data: &[u8]) -> io::Result<Vec<u8>> {
         let mut out = Vec::new();
         match self {
             Self::None => out.extend_from_slice(data),
@@ -109,7 +120,7 @@ impl Compression {
         Ok(out)
     }
 
-    pub fn compress(self, data: &[u8]) -> Result<Vec<u8>> {
+    fn encode(self, data: &[u8]) -> io::Result<Vec<u8>> {
         Ok(match self {
             Self::None => data.to_vec(),
             Self::Gzip => {
@@ -167,16 +178,18 @@ impl Compression {
     }
 }
 
-fn encode_stream(stream: Stream, data: &[u8]) -> Result<Vec<u8>> {
+fn encode_stream(stream: Stream, data: &[u8]) -> io::Result<Vec<u8>> {
     let mut encoder = liblzma::write::XzEncoder::new_stream(Vec::new(), stream);
     encoder.write_all(data)?;
-    encoder.finish().context("compressing ramdisk")
+    encoder.finish()
 }
 
 /// Decompresses `data` if it is in a known format.
 pub fn detect_and_decompress(data: &[u8]) -> Result<(Compression, Vec<u8>)> {
     let Some(compression) = Compression::detect(data) else {
-        bail!("unrecognized compression format");
+        return Err(Error::Format(
+            "a gzip, lz4, xz, lzma or uncompressed cpio ramdisk",
+        ));
     };
     Ok((compression, compression.decompress(data)?))
 }

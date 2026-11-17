@@ -1,9 +1,12 @@
 //! The command-line tool: editable workspaces on disk, built on the library.
 
 pub mod dtc;
+mod error;
 pub mod info;
 pub mod ramdisk;
 pub mod workspace;
+
+pub use error::{Error, IoAt, Result, report};
 
 use sha2::{Digest, Sha256};
 

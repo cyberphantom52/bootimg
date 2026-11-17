@@ -15,4 +15,7 @@ pub mod compress;
 pub mod cpio;
 pub mod dtb;
 pub mod dtbo;
+mod error;
 mod util;
+
+pub use error::{Error, Result};

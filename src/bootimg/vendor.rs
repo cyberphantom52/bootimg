@@ -1,8 +1,10 @@
-use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
 use super::{Components, Layout, check_page_size, component, size32};
-use crate::util::{align, cstr, hex32, hex64, le32, le64, push_padded, put_cstr, slice};
+use crate::{
+    Error, Result,
+    util::{align, cstr, hex32, hex64, le32, le64, push_padded, put_cstr, slice},
+};
 
 const VENDOR_BOOT_MAGIC: &[u8; 8] = b"VNDRBOOT";
 const VENDOR_V3_HEADER: u64 = 2112;
@@ -41,10 +43,9 @@ pub struct VendorRamdisk {
 pub fn parse_vendor_boot(data: &[u8]) -> Result<(VendorBootHeader, Layout)> {
     let header = slice(data, 0, VENDOR_V3_HEADER, "vendor_boot header")?;
     let version = le32(header, 8);
-    ensure!(
-        matches!(version, 3 | 4),
-        "unsupported vendor_boot header version {version}"
-    );
+    if !matches!(version, 3 | 4) {
+        return Err(Error::unsupported("vendor_boot header version", version));
+    }
     let header = if version == 4 {
         slice(data, 0, VENDOR_V4_HEADER, "vendor_boot header")?
     } else {
@@ -66,10 +67,12 @@ pub fn parse_vendor_boot(data: &[u8]) -> Result<(VendorBootHeader, Layout)> {
     if version == 4 && le32(header, 2116) > 0 {
         // Each table row is one ramdisk within the vendor ramdisk section.
         let (count, entry_size) = (le32(header, 2116), u64::from(le32(header, 2120)));
-        ensure!(
-            entry_size >= TABLE_ENTRY_SIZE,
-            "vendor ramdisk table entries are too small"
-        );
+        if entry_size < TABLE_ENTRY_SIZE {
+            return Err(Error::invalid(
+                "vendor ramdisk table entry size",
+                entry_size,
+            ));
+        }
         let table = slice(data, table_offset, table_size, "vendor ramdisk table")?;
         for index in 0..count as u64 {
             let entry = slice(
@@ -79,10 +82,14 @@ pub fn parse_vendor_boot(data: &[u8]) -> Result<(VendorBootHeader, Layout)> {
                 "vendor ramdisk table entry",
             )?;
             let (size, offset) = (u64::from(le32(entry, 0)), u64::from(le32(entry, 4)));
-            ensure!(
-                offset + size <= ramdisk_size,
-                "vendor ramdisk {index} lies outside the ramdisk section"
-            );
+            if offset + size > ramdisk_size {
+                return Err(Error::Truncated {
+                    what: format!("vendor ramdisk {index}"),
+                    offset,
+                    len: size,
+                    size: ramdisk_size,
+                });
+            }
             let file = format!("vendor_ramdisk.{index}");
             layout.push((file.clone(), ramdisk_offset + offset, size));
             ramdisks.push(VendorRamdisk {
@@ -127,10 +134,9 @@ pub fn parse_vendor_boot(data: &[u8]) -> Result<(VendorBootHeader, Layout)> {
 
 pub fn build_vendor_boot(header: &VendorBootHeader, components: &Components) -> Result<Vec<u8>> {
     let version = header.header_version;
-    ensure!(
-        matches!(version, 3 | 4),
-        "unsupported vendor_boot header version {version}"
-    );
+    if !matches!(version, 3 | 4) {
+        return Err(Error::unsupported("vendor_boot header version", version));
+    }
     let page = header.page_size as usize;
     check_page_size(page as u64)?;
     let get = |name| component(components, name);

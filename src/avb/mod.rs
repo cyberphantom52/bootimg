@@ -9,11 +9,11 @@ mod key;
 mod vbmeta;
 
 pub use descriptor::{Descriptor, hash, update_hash};
-pub use footer::{Footer, append_footer};
+pub use footer::{Footer, HashFooter, write_footer};
 pub use key::{Key, known_key, signing_key};
 pub use vbmeta::{Signature, VbMeta};
 
-use anyhow::{Context, Result, bail};
+use crate::{Error, Result};
 use rsa::Pkcs1v15Sign;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
@@ -45,7 +45,7 @@ impl Algorithm {
         Self::ALL
             .get(id as usize)
             .copied()
-            .with_context(|| format!("unknown AVB algorithm type {id}"))
+            .ok_or_else(|| Error::unsupported("AVB algorithm type", id))
     }
 
     fn id(self) -> u32 {
@@ -85,7 +85,7 @@ impl Algorithm {
             (true, 2048) => Self::SHA512_RSA2048,
             (true, 4096) => Self::SHA512_RSA4096,
             (true, 8192) => Self::SHA512_RSA8192,
-            _ => bail!("unsupported RSA key size {bits}; AVB needs 2048, 4096 or 8192 bits"),
+            _ => return Err(Error::KeySize(bits)),
         })
     }
 

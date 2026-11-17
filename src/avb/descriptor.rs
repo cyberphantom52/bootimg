@@ -1,6 +1,6 @@
 //! vbmeta descriptors, as defined by libavb's `avb_*_descriptor.h`.
 
-use anyhow::{Result, bail};
+use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 
@@ -79,7 +79,9 @@ impl<'a> Fields<'a> {
     }
 
     fn text(&mut self, len: usize) -> Result<String> {
-        Ok(String::from_utf8(self.take(len)?.to_vec())?)
+        let bytes = self.take(len)?;
+        String::from_utf8(bytes.to_vec())
+            .map_err(|_| Error::invalid("AVB descriptor text", String::from_utf8_lossy(bytes)))
     }
 }
 
@@ -151,7 +153,7 @@ impl Descriptor {
                     flags: be32(body, 12),
                 }
             }
-            _ => bail!("unrecognized descriptor"),
+            _ => return Err(Error::unsupported("AVB descriptor tag", tag)),
         };
         Ok(parsed)
     }
@@ -278,7 +280,7 @@ pub fn update_hash(descriptor: &mut Descriptor, image: &[u8]) -> Result<()> {
         ..
     } = descriptor
     else {
-        bail!("expected a hash descriptor");
+        return Err(Error::NoHashDescriptor);
     };
     *image_size = image.len() as u64;
     *digest = hash(hash_algorithm, salt, image)?;
@@ -303,7 +305,7 @@ pub fn hash(algorithm: &str, salt: &[u8], data: &[u8]) -> Result<Vec<u8>> {
             .chain_update(data)
             .finalize()
             .to_vec(),
-        other => bail!("unsupported hash algorithm {other:?}"),
+        other => return Err(Error::unsupported("hash algorithm", other)),
     })
 }
 

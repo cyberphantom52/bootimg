@@ -1,29 +1,27 @@
-use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, fs, path::Path};
 
 use super::{AvbInfo, ImageInfo, STATE_DIR, State, Workspace, detect, split_footer};
+use crate::cli::{Error, IoAt, Result};
 use bootimgctl::{
     avb::{self, VbMeta},
     bootimg, dtbo,
 };
 
 pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
-    let data = fs::read(input).with_context(|| format!("reading {}", input.display()))?;
+    let data = fs::read(input).at(input)?;
     let (payload, footer) = split_footer(&data)?;
     let format = detect(payload)?;
 
     if dir.exists() {
-        let empty = fs::read_dir(dir)?.next().is_none();
-        ensure!(
-            empty || (force && dir.join(STATE_DIR).is_dir()),
-            "{} already exists; use --force to replace a previous workspace",
-            dir.display()
-        );
+        let empty = fs::read_dir(dir).at(dir)?.next().is_none();
+        if !empty && !(force && dir.join(STATE_DIR).is_dir()) {
+            return Err(Error::WorkspaceExists(dir.to_path_buf()));
+        }
         if !empty {
-            fs::remove_dir_all(dir)?;
+            fs::remove_dir_all(dir).at(dir)?;
         }
     }
-    fs::create_dir_all(dir.join(STATE_DIR))?;
+    fs::create_dir_all(dir.join(STATE_DIR)).at(dir)?;
     let mut ws = Workspace {
         dir: dir.to_path_buf(),
         state: State {
@@ -34,7 +32,8 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
         },
     };
     // Kept so an unchanged workspace packs back to the exact original.
-    fs::write(dir.join(STATE_DIR).join("original.img"), &data)?;
+    let original = dir.join(STATE_DIR).join("original.img");
+    fs::write(&original, &data).at(&original)?;
 
     let mut contents = Vec::new();
     let info = match format {
@@ -71,7 +70,9 @@ pub fn unpack(input: &Path, dir: &Path, force: bool) -> Result<()> {
             ImageInfo::VendorBoot { header }
         }
         "vbmeta" => {
-            ensure!(footer.is_none(), "vbmeta image with an AVB footer");
+            if footer.is_some() {
+                return Err(Error::FooterOnVbmeta);
+            }
             let (vbmeta, signature) = VbMeta::parse(payload)?;
             if signature == avb::Signature::Invalid {
                 eprintln!("warning: the vbmeta signature does not verify");

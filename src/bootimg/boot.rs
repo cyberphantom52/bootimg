@@ -1,11 +1,13 @@
-use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
 use super::{
     Components, Layout, check_page_size, component, decode_os_version, encode_os_version, size32,
 };
-use crate::util::{align, cstr, hex32, hex64, le32, le64, push_padded, put_cstr, slice};
+use crate::{
+    Error, Result,
+    util::{align, cstr, hex32, hex64, le32, le64, push_padded, put_cstr, slice, too_long},
+};
 
 const BOOT_MAGIC: &[u8; 8] = b"ANDROID!";
 
@@ -45,7 +47,9 @@ fn is_zero(value: &u64) -> bool {
 
 pub fn parse_boot(data: &[u8]) -> Result<(BootHeader, Layout)> {
     let version = le32(slice(data, 0, 44, "boot header")?, 40);
-    ensure!(version <= 4, "unsupported boot header version {version}");
+    if version > 4 {
+        return Err(Error::unsupported("boot header version", version));
+    }
     let header_size = [1632, 1648, 1660, 1580, 1584][version as usize];
     let header = slice(data, 0, header_size, "boot header")?;
     let modern = version >= 3;
@@ -122,7 +126,9 @@ pub fn parse_boot(data: &[u8]) -> Result<(BootHeader, Layout)> {
 /// as given; GKI signatures are regenerated separately.
 pub fn build_boot(header: &BootHeader, components: &Components) -> Result<Vec<u8>> {
     let version = header.header_version;
-    ensure!(version <= 4, "unsupported boot header version {version}");
+    if version > 4 {
+        return Err(Error::unsupported("boot header version", version));
+    }
     let page = if version >= 3 {
         4096
     } else {
@@ -168,10 +174,9 @@ pub fn build_boot(header: &BootHeader, components: &Components) -> Result<Vec<u8
     put_cstr(&mut h[48..64], header.name.as_deref().unwrap_or(""), "name")?;
     // The command line spills from the 512-byte field into extra_cmdline.
     let cmdline = header.cmdline.as_bytes();
-    ensure!(
-        cmdline.len() <= 511 + 1023,
-        "cmdline is longer than 1534 bytes"
-    );
+    if cmdline.len() > 511 + 1023 {
+        return Err(too_long("cmdline", cmdline.len(), 511 + 1023));
+    }
     let mut split = cmdline.len().min(511);
     while !header.cmdline.is_char_boundary(split) {
         split -= 1;

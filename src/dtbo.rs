@@ -1,11 +1,13 @@
 //! DTBO partition images: a table of device tree overlays (libufdt's
 //! `dt_table.h`, as written by mkdtboimg).
 
-use anyhow::{Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
-use crate::util::{be32, hex32, slice};
+use crate::{
+    Error, Result,
+    util::{be32, hex32, slice},
+};
 
 pub const DTBO_MAGIC: [u8; 4] = [0xd7, 0xb7, 0xab, 0x1e];
 
@@ -42,15 +44,16 @@ const DTBO_ENTRY_SIZE: u32 = 32;
 
 /// Parses a DTBO image into its table and (decompressed) device trees.
 pub fn parse_dtbo(data: &[u8]) -> Result<(Dtbo, Vec<Vec<u8>>)> {
-    ensure!(data.starts_with(&DTBO_MAGIC), "missing DTBO magic");
+    if !data.starts_with(&DTBO_MAGIC) {
+        return Err(Error::Format("a DTBO image"));
+    }
     let header = slice(data, 0, DTBO_HEADER_SIZE as u64, "DTBO header")?;
     let (entry_size, count, entries_offset) =
         (be32(header, 12), be32(header, 16), be32(header, 20));
     let (page_size, version) = (be32(header, 24), be32(header, 28));
-    ensure!(
-        entry_size >= DTBO_ENTRY_SIZE,
-        "DTBO entries are smaller than 32 bytes"
-    );
+    if entry_size < DTBO_ENTRY_SIZE {
+        return Err(Error::invalid("DTBO entry size", entry_size));
+    }
     let mut entries = Vec::new();
     let mut trees = Vec::new();
     for index in 0..count {
@@ -73,13 +76,14 @@ pub fn parse_dtbo(data: &[u8]) -> Result<(Dtbo, Vec<Vec<u8>>)> {
             1 | 2 => {
                 let mut out = Vec::new();
                 if entry.compression(version) == 1 {
-                    flate2::read::ZlibDecoder::new(blob).read_to_end(&mut out)?;
+                    flate2::read::ZlibDecoder::new(blob).read_to_end(&mut out)
                 } else {
-                    flate2::read::GzDecoder::new(blob).read_to_end(&mut out)?;
+                    flate2::read::GzDecoder::new(blob).read_to_end(&mut out)
                 }
+                .map_err(|source| Error::Compression("DTBO device tree", source))?;
                 out
             }
-            other => bail!("DTBO entry {index} has unknown compression {other}"),
+            other => return Err(Error::unsupported("DTBO compression", other)),
         };
         entries.push(entry);
         trees.push(tree);
@@ -110,7 +114,8 @@ pub fn build_dtbo(dtbo: &Dtbo, trees: &[Vec<u8>]) -> Result<Vec<u8>> {
         {
             Some(&(_, _, offset, size)) => (offset, size),
             None => {
-                let blob = compress_tree(tree, compression)?;
+                let blob = compress_tree(tree, compression)
+                    .map_err(|source| Error::Compression("DTBO device tree", source))?;
                 let offset = data_start + blobs.len() as u32;
                 blobs.extend_from_slice(&blob);
                 seen.push((compression, tree.clone(), offset, blob.len() as u32));
@@ -142,7 +147,7 @@ pub fn build_dtbo(dtbo: &Dtbo, trees: &[Vec<u8>]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn compress_tree(tree: &[u8], compression: u32) -> Result<Vec<u8>> {
+fn compress_tree(tree: &[u8], compression: u32) -> std::io::Result<Vec<u8>> {
     use std::io::Write;
     Ok(match compression {
         0 => tree.to_vec(),

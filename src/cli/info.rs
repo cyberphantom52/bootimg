@@ -1,6 +1,5 @@
 //! `bootimgctl info`: a readable summary of an image, including AVB verification.
 
-use anyhow::{Context, Result};
 use std::{fs, path::Path};
 
 use bootimgctl::{
@@ -10,8 +9,10 @@ use bootimgctl::{
     dtb, dtbo,
 };
 
+use crate::cli::{IoAt, Result};
+
 pub fn show(path: &Path) -> Result<()> {
-    let data = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let data = fs::read(path).at(path)?;
     let footer = Footer::parse(&data);
     let payload = match footer {
         Some(footer) => footer.payload(&data)?,
@@ -79,7 +80,10 @@ pub fn show(path: &Path) -> Result<()> {
         Some([0xd0, 0x0d, 0xfe, 0xed]) => {
             say!("Device tree blob, {} trees", dtb::split(payload).len());
         }
-        _ => anyhow::bail!("not a boot, vendor_boot, vbmeta, dtbo or dtb image"),
+        _ => {
+            let format = "a boot, vendor_boot, vbmeta, dtbo or dtb image";
+            return Err(bootimgctl::Error::Format(format).into());
+        }
     }
 
     if let Some(footer) = footer {

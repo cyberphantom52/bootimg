@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use crate::{Error, Result};
 
 pub fn align(value: u64, to: u64) -> u64 {
     value.div_ceil(to) * to
@@ -30,10 +30,12 @@ pub fn be64(data: &[u8], offset: usize) -> u64 {
 pub fn slice<'a>(data: &'a [u8], offset: u64, len: u64, what: &str) -> Result<&'a [u8]> {
     match offset.checked_add(len) {
         Some(end) if end <= data.len() as u64 => Ok(&data[offset as usize..end as usize]),
-        _ => bail!(
-            "{what} ({len} bytes at offset {offset}) extends past the end of the image ({} bytes)",
-            data.len()
-        ),
+        _ => Err(Error::Truncated {
+            what: what.to_string(),
+            offset,
+            len,
+            size: data.len() as u64,
+        }),
     }
 }
 
@@ -46,15 +48,23 @@ pub fn cstr(field: &[u8]) -> String {
 /// Encodes `text` into a fixed-size NUL-padded field.
 pub fn put_cstr(out: &mut [u8], text: &str, what: &str) -> Result<()> {
     if text.len() > out.len() {
-        bail!("{what} is {} bytes; at most {} fit", text.len(), out.len());
+        return Err(too_long(what, text.len(), out.len()));
     }
     out.fill(0);
     out[..text.len()].copy_from_slice(text.as_bytes());
     Ok(())
 }
 
+pub fn too_long(what: &str, len: usize, max: usize) -> Error {
+    Error::TooLong {
+        what: what.to_string(),
+        len: len as u64,
+        max: max as u64,
+    }
+}
+
 pub mod hex {
-    use anyhow::{Result, bail};
+    use crate::{Error, Result};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn encode(bytes: impl AsRef<[u8]>) -> String {
@@ -63,13 +73,13 @@ pub mod hex {
 
     pub fn decode(text: &str) -> Result<Vec<u8>> {
         if !text.len().is_multiple_of(2) {
-            bail!("hex string has an odd number of digits");
+            return Err(Error::invalid("hex string", text));
         }
         (0..text.len())
             .step_by(2)
             .map(|i| {
                 u8::from_str_radix(&text[i..i + 2], 16)
-                    .map_err(|_| anyhow::anyhow!("invalid hex string {text:?}"))
+                    .map_err(|_| Error::invalid("hex string", text))
             })
             .collect()
     }

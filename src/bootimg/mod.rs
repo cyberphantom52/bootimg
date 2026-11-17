@@ -2,15 +2,21 @@
 //! defined by AOSP `system/tools/mkbootimg/include/bootimg/bootimg.h`.
 
 mod boot;
+mod gki;
+mod image;
 mod vendor;
 
 pub use boot::{Addresses, BootHeader, build_boot, parse_boot};
+pub use gki::resign_gki;
+pub use image::{Header, Image};
 pub use vendor::{VendorBootHeader, VendorRamdisk, build_vendor_boot, parse_vendor_boot};
 
-use anyhow::{Result, bail, ensure};
 use std::collections::BTreeMap;
 
-use crate::util::align;
+use crate::{
+    Error, Result,
+    util::{align, too_long},
+};
 
 /// Component name to contents.
 pub type Components = BTreeMap<String, Vec<u8>>;
@@ -34,24 +40,25 @@ fn decode_os_version(raw: u32) -> (String, String) {
 }
 
 fn encode_os_version(version: &str, patch: &str) -> Result<u32> {
+    let invalid = || {
+        Error::invalid(
+            "os_version and os_patch_level (like \"14.0.0\" and \"2024-05\")",
+            format!("{version:?} and {patch:?}"),
+        )
+    };
     let numbers = |text: &str, separator: char| -> Result<Vec<u32>> {
         text.split(separator)
-            .map(|part| {
-                part.trim()
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("invalid number in {text:?}"))
-            })
+            .map(|part| part.trim().parse().map_err(|_| invalid()))
             .collect()
     };
     let v = numbers(version, '.')?;
     let p = numbers(patch, '-')?;
     let (&[a, b, c], &[year, month]) = (&v[..], &p[..]) else {
-        bail!("os_version must look like \"14.0.0\" and os_patch_level like \"2024-05\"");
+        return Err(invalid());
     };
-    ensure!(
-        a < 128 && b < 128 && c < 128 && (2000..2128).contains(&year) && month < 16,
-        "os_version {version:?} or os_patch_level {patch:?} is out of range"
-    );
+    if a >= 128 || b >= 128 || c >= 128 || !(2000..2128).contains(&year) || month >= 16 {
+        return Err(invalid());
+    }
     Ok((((a << 14) | (b << 7) | c) << 11) | ((year - 2000) << 4) | month)
 }
 
@@ -71,14 +78,13 @@ fn component<'a>(components: &'a Components, name: &str) -> &'a [u8] {
 }
 
 fn size32(data: &[u8], name: &str) -> Result<u32> {
-    u32::try_from(data.len()).map_err(|_| anyhow::anyhow!("{name} is larger than 4 GiB"))
+    u32::try_from(data.len()).map_err(|_| too_long(name, data.len(), u32::MAX as usize))
 }
 
 fn check_page_size(page: u64) -> Result<()> {
-    ensure!(
-        page.is_power_of_two() && page >= 2048,
-        "invalid page size {page}"
-    );
+    if !page.is_power_of_two() || page < 2048 {
+        return Err(Error::invalid("page size", page));
+    }
     Ok(())
 }
 

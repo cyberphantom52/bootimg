@@ -1,8 +1,6 @@
 //! The "newc" cpio format used by initramfs.
 
-use anyhow::{Result, bail};
-
-use crate::util::align;
+use crate::{Error, Result, util::align};
 
 pub const S_IFMT: u32 = 0o170000;
 pub const S_IFDIR: u32 = 0o040000;
@@ -42,14 +40,17 @@ pub fn parse(data: &[u8]) -> Result<Vec<Entry>> {
             Some(header) if header.starts_with(b"070701") || header.starts_with(b"070702") => {
                 header
             }
-            _ if entries.is_empty() => bail!("not a newc cpio archive"),
+            _ if entries.is_empty() => return Err(Error::Format("a newc cpio archive")),
             // Trailing non-cpio data after the last archive is ignored, like the kernel's
             // "junk in compressed archive" handling.
             _ => break,
         };
         let field = |index: usize| -> Result<u32> {
-            let text = std::str::from_utf8(&header[6 + index * 8..14 + index * 8])?;
-            Ok(u32::from_str_radix(text, 16)?)
+            let raw = &header[6 + index * 8..14 + index * 8];
+            std::str::from_utf8(raw)
+                .ok()
+                .and_then(|text| u32::from_str_radix(text, 16).ok())
+                .ok_or_else(|| Error::invalid("cpio header field", String::from_utf8_lossy(raw)))
         };
         let name_size = field(11)? as usize;
         let file_size = field(6)? as usize;
@@ -57,7 +58,12 @@ pub fn parse(data: &[u8]) -> Result<Vec<Entry>> {
         let data_start = align((name_start + name_size) as u64, 4) as usize;
         let data_end = data_start + file_size;
         if name_size == 0 || data_end > data.len() {
-            bail!("truncated cpio entry at offset {offset}");
+            return Err(Error::Truncated {
+                what: "cpio entry".into(),
+                offset: offset as u64,
+                len: (data_end - offset) as u64,
+                size: data.len() as u64,
+            });
         }
         let name = &data[name_start..name_start + name_size - 1];
         let name = String::from_utf8_lossy(name).into_owned();

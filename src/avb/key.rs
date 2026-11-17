@@ -1,6 +1,5 @@
 //! RSA keys and AVB's public key encoding.
 
-use anyhow::{Context, Result, ensure};
 use rsa::{
     BigUint, RsaPrivateKey, RsaPublicKey, pkcs1::DecodeRsaPrivateKey, pkcs8::DecodePrivateKey,
     traits::PublicKeyParts,
@@ -8,7 +7,10 @@ use rsa::{
 use std::path::Path;
 
 use super::Algorithm;
-use crate::util::{be32, slice};
+use crate::{
+    Error, Result,
+    util::{be32, slice},
+};
 
 /// An RSA signing key.
 pub struct Key {
@@ -24,17 +26,19 @@ const TEST_KEYS: [(usize, &str); 3] = [
 
 impl Key {
     pub fn load(path: &Path) -> Result<Self> {
-        let data =
-            std::fs::read(path).with_context(|| format!("reading key {}", path.display()))?;
+        let data = std::fs::read(path).map_err(|source| Error::ReadKey {
+            path: path.to_path_buf(),
+            source,
+        })?;
         let key = match std::str::from_utf8(&data) {
             Ok(text) if text.contains("-----BEGIN") => RsaPrivateKey::from_pkcs1_pem(text)
-                .map_err(anyhow::Error::from)
-                .or_else(|_| RsaPrivateKey::from_pkcs8_pem(text).map_err(anyhow::Error::from)),
+                .ok()
+                .or_else(|| RsaPrivateKey::from_pkcs8_pem(text).ok()),
             _ => RsaPrivateKey::from_pkcs8_der(&data)
-                .map_err(anyhow::Error::from)
-                .or_else(|_| RsaPrivateKey::from_pkcs1_der(&data).map_err(anyhow::Error::from)),
+                .ok()
+                .or_else(|| RsaPrivateKey::from_pkcs1_der(&data).ok()),
         }
-        .with_context(|| format!("{} is not an RSA private key (PEM or DER)", path.display()))?;
+        .ok_or_else(|| Error::NotAKey(path.to_path_buf()))?;
         Ok(Self {
             key,
             description: path.display().to_string(),
@@ -46,9 +50,9 @@ impl Key {
         let (_, pem) = TEST_KEYS
             .iter()
             .find(|(size, _)| *size == bits)
-            .with_context(|| format!("no AOSP test key with {bits} bits"))?;
+            .ok_or(Error::KeySize(bits))?;
         Ok(Self {
-            key: RsaPrivateKey::from_pkcs1_pem(pem)?,
+            key: RsaPrivateKey::from_pkcs1_pem(pem).expect("the AOSP test keys parse"),
             description: format!("AOSP test key testkey_rsa{bits}"),
         })
     }
@@ -96,7 +100,7 @@ fn left_pad(bytes: &[u8], len: usize) -> Vec<u8> {
 }
 
 pub(super) fn decode_public_key(blob: &[u8]) -> Result<RsaPublicKey> {
-    ensure!(blob.len() >= 8, "AVB public key is truncated");
+    slice(blob, 0, 8, "AVB public key header")?;
     let bytes = be32(blob, 0) as usize / 8;
     let n = slice(blob, 8, bytes as u64, "AVB public key modulus")?;
     // The default limit is 4096 bits; AVB also uses 8192-bit keys.

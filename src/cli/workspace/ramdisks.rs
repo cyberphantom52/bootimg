@@ -1,11 +1,10 @@
 //! Ramdisks in a workspace: `NAME.img` holds the ramdisk as stored in the
 //! image, `NAME/` the extracted tree and `NAME.cpio.json` its metadata.
 
-use anyhow::{Result, ensure};
 use std::fs;
 
 use super::Workspace;
-use crate::cli::ramdisk;
+use crate::cli::{Error, Result, ramdisk, report};
 
 impl Workspace {
     pub(super) fn unpack_ramdisk(&mut self, name: &str, data: &[u8]) -> Result<String> {
@@ -15,7 +14,7 @@ impl Workspace {
         }
         match ramdisk::unpack(data, &self.path(name)) {
             Ok(metadata) => {
-                self.write(&format!("{name}.cpio.json"), metadata.to_json()?.as_bytes())?;
+                self.write(&format!("{name}.cpio.json"), metadata.to_json().as_bytes())?;
                 let digest = ramdisk::tree_digest(&self.path(name))?;
                 self.state.hashes.insert(format!("{name}/"), digest);
                 Ok(format!(
@@ -26,7 +25,7 @@ impl Workspace {
             }
             Err(error) => {
                 let _ = fs::remove_dir_all(self.path(name));
-                eprintln!("warning: {name} kept as raw {name}.img: {error:#}");
+                eprintln!("warning: {name} kept as raw {name}.img: {}", report(&error));
                 Ok(format!("{name}.img (raw)"))
             }
         }
@@ -45,10 +44,9 @@ impl Workspace {
             !self.exists(&image) && self.exists(&tree) && self.exists(&metadata)
         };
         if tree_edited {
-            ensure!(
-                !self.recorded(&image) || !self.changed(&image)?,
-                "both {name}/ and {image} were changed; keep only one of the edits"
-            );
+            if self.recorded(&image) && self.changed(&image)? {
+                return Err(Error::ConflictingEdits(tree, image));
+            }
             let metadata: ramdisk::Metadata = self.read_json(&metadata)?;
             say!(
                 "Rebuilding {name} from {name}/ ({})",
@@ -59,7 +57,9 @@ impl Workspace {
         if self.exists(&image) {
             return Ok(Some(self.read(&image)?));
         }
-        ensure!(!self.recorded(&image), "{image} was deleted");
+        if self.recorded(&image) {
+            return Err(Error::Deleted(image));
+        }
         Ok(None)
     }
 }
