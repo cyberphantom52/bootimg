@@ -24,6 +24,11 @@ impl Footer {
         })
     }
 
+    /// The image the footer protects, without the vbmeta blob and padding.
+    pub fn payload<'a>(&self, image: &'a [u8]) -> Result<&'a [u8]> {
+        slice(image, 0, self.original_image_size, "AVB footer image")
+    }
+
     pub fn vbmeta<'a>(&self, image: &'a [u8]) -> Result<&'a [u8]> {
         slice(
             image,

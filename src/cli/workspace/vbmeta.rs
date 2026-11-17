@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::{fs, path::Path};
 
-use crate::avb::{self, Descriptor, VbMeta};
+use bootimgctl::avb::{self, Descriptor, VbMeta};
 
 /// Replaces the hash descriptor for `descriptor`'s partition in the vbmeta
 /// image at `path`, re-signs it and writes `<name>.signed` next to `output`.

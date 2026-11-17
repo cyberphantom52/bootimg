@@ -8,19 +8,10 @@ macro_rules! say {
     }};
 }
 
-mod avb;
-mod bootimg;
-mod compress;
-mod cpio;
-mod dtb;
-mod dtbo;
-mod dtc;
-mod info;
-mod ramdisk;
-mod util;
-mod workspace;
+mod cli;
 
 use clap::{Parser, Subcommand};
+use cli::{info, workspace};
 use std::{path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]

@@ -25,12 +25,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{
+use crate::cli::{ramdisk, sha256_hex};
+use bootimgctl::{
     avb::{self, Footer, VbMeta},
     bootimg::{BootHeader, VendorBootHeader},
     dtbo::Dtbo,
-    ramdisk,
-    util::{sha256_hex, slice},
 };
 
 const STATE_DIR: &str = ".bootimgctl";
@@ -172,7 +171,7 @@ fn split_footer(data: &[u8]) -> Result<(&[u8], Option<AvbInfo>)> {
     if signature == avb::Signature::Invalid {
         eprintln!("warning: the AVB footer signature does not verify");
     }
-    let payload = slice(data, 0, footer.original_image_size, "AVB footer image")?;
+    let payload = footer.payload(data)?;
     Ok((
         payload,
         Some(AvbInfo {

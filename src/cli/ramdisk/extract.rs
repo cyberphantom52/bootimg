@@ -7,7 +7,7 @@ use std::{
 };
 
 use super::{EntryMeta, host_mode, host_path, is_special};
-use crate::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
+use bootimgctl::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
 
 /// Writes `entries` under `root` (which must not exist) and returns their metadata.
 pub fn extract(entries: Vec<Entry>, root: &Path) -> Result<Vec<EntryMeta>> {

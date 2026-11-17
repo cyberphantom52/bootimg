@@ -1,5 +1,4 @@
 use anyhow::{Result, bail};
-use sha2::{Digest, Sha256};
 
 pub fn align(value: u64, to: u64) -> u64 {
     value.div_ceil(to) * to
@@ -52,10 +51,6 @@ pub fn put_cstr(out: &mut [u8], text: &str, what: &str) -> Result<()> {
     out.fill(0);
     out[..text.len()].copy_from_slice(text.as_bytes());
     Ok(())
-}
-
-pub fn sha256_hex(data: &[u8]) -> String {
-    hex::encode(Sha256::digest(data))
 }
 
 pub mod hex {

@@ -5,7 +5,7 @@ use std::{
 };
 
 use super::{AvbInfo, ImageInfo, Workspace, gki, split_footer, vbmeta};
-use crate::{
+use bootimgctl::{
     avb,
     bootimg::{self, Components},
     dtbo,

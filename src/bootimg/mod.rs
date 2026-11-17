@@ -4,8 +4,8 @@
 mod boot;
 mod vendor;
 
-pub use boot::{BootHeader, build_boot, parse_boot};
-pub use vendor::{VendorBootHeader, build_vendor_boot, parse_vendor_boot};
+pub use boot::{Addresses, BootHeader, build_boot, parse_boot};
+pub use vendor::{VendorBootHeader, VendorRamdisk, build_vendor_boot, parse_vendor_boot};
 
 use anyhow::{Result, bail, ensure};
 use std::collections::BTreeMap;

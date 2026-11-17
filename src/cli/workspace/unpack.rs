@@ -2,7 +2,7 @@ use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, fs, path::Path};
 
 use super::{AvbInfo, ImageInfo, STATE_DIR, State, Workspace, detect, split_footer};
-use crate::{
+use bootimgctl::{
     avb::{self, VbMeta},
     bootimg, dtbo,
 };

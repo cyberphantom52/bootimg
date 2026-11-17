@@ -14,7 +14,7 @@ use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::{
+use bootimgctl::{
     compress::Compression,
     cpio::{self, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG},
 };
@@ -107,7 +107,7 @@ fn host_mode(mode: u32) -> u32 {
 
 /// Unpacks a ramdisk: `bytes` must be cpio (optionally compressed).
 pub fn unpack(bytes: &[u8], root: &Path) -> Result<Metadata> {
-    let (compression, raw) = crate::compress::detect_and_decompress(bytes)?;
+    let (compression, raw) = bootimgctl::compress::detect_and_decompress(bytes)?;
     let entries = cpio::parse(&raw)?;
     Ok(Metadata {
         compression,

@@ -4,7 +4,8 @@
 use anyhow::{Result, ensure};
 
 use super::Workspace;
-use crate::{dtb, dtc};
+use crate::cli::dtc;
+use bootimgctl::dtb;
 
 impl Workspace {
     fn dts_names(raw: &str, count: usize) -> Vec<String> {

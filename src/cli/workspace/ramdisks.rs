@@ -5,7 +5,7 @@ use anyhow::{Result, ensure};
 use std::fs;
 
 use super::Workspace;
-use crate::ramdisk;
+use crate::cli::ramdisk;
 
 impl Workspace {
     pub(super) fn unpack_ramdisk(&mut self, name: &str, data: &[u8]) -> Result<String> {

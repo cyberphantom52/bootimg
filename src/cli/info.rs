@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use std::{fs, path::Path};
 
-use crate::{
+use bootimgctl::{
     avb::{self, Descriptor, Footer, Signature, VbMeta},
     bootimg,
     compress::Compression,
@@ -14,7 +14,7 @@ pub fn show(path: &Path) -> Result<()> {
     let data = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     let footer = Footer::parse(&data);
     let payload = match footer {
-        Some(footer) => crate::util::slice(&data, 0, footer.original_image_size, "image")?,
+        Some(footer) => footer.payload(&data)?,
         None => &data[..],
     };
 

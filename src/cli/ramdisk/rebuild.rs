@@ -8,7 +8,7 @@ use std::{
 };
 
 use super::{EntryMeta, Metadata, host_mode, host_path, is_special};
-use crate::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
+use bootimgctl::cpio::{Entry, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG};
 
 /// Every path under `root`, parents before children, in sorted order.
 fn walk(root: &Path) -> Result<Vec<(String, fs::Metadata)>> {
@@ -166,13 +166,14 @@ pub fn tree_digest(root: &Path) -> Result<String> {
         hasher.update((kind | metadata.permissions().mode() & 0o7777).to_le_bytes());
         hasher.update(Sha256::digest(contents(root, &path, kind)?));
     }
-    Ok(crate::util::hex::encode(hasher.finalize()))
+    Ok(crate::cli::hex(hasher.finalize()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{compress::Compression, ramdisk::extract::extract};
+    use crate::cli::ramdisk::extract::extract;
+    use bootimgctl::compress::Compression;
 
     #[test]
     fn rebuilding_keeps_recorded_metadata_and_picks_up_edits() {

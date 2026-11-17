@@ -3,10 +3,9 @@
 use anyhow::{Result, ensure};
 use std::path::Path;
 
-use crate::{
+use bootimgctl::{
     avb::{self, Descriptor, VbMeta},
     bootimg::Components,
-    util::{align, be64},
 };
 
 /// Regenerates the boot signature of a v4 boot `image`: the vbmeta blobs
@@ -19,14 +18,15 @@ pub(super) fn resign(
     components: &Components,
     key: Option<&Path>,
 ) -> Result<()> {
-    let signature_area = align(signature.len() as u64, 4096) as usize;
+    let signature_area = signature.len().div_ceil(4096) * 4096;
     let signed_len = image.len() - signature_area;
     let mut blobs = Vec::new();
     let mut offset = 0;
     while signature[offset..].starts_with(b"AVB0") {
         let header = &signature[offset..];
         let (mut vbmeta, _) = VbMeta::parse(header)?;
-        offset += (256 + be64(header, 12) + be64(header, 20)) as usize;
+        let block = |at: usize| u64::from_be_bytes(header[at..at + 8].try_into().unwrap());
+        offset += (256 + block(12) + block(20)) as usize;
         for descriptor in &mut vbmeta.descriptors {
             if let Descriptor::Hash { partition_name, .. } = descriptor {
                 let covered = match partition_name.as_str() {
